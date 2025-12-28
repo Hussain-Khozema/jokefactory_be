@@ -1,0 +1,111 @@
+# golangci-lint configuration
+# Run: make lint
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # Default linters
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Additional linters for code quality
+    - bodyclose      # Check HTTP response body is closed
+    - contextcheck   # Check context.Context usage
+    - dupl           # Detect duplicate code
+    - errname        # Check error naming conventions
+    - errorlint      # Find issues with error wrapping
+    - exhaustive     # Check exhaustiveness of enum switches
+    - gocognit       # Check cognitive complexity
+    - goconst        # Find repeated strings that could be constants
+    - gocritic       # Comprehensive Go linter
+    - gocyclo        # Check cyclomatic complexity
+    - gofmt          # Check code formatting
+    - goimports      # Check import formatting
+    - gosec          # Security checker
+    - misspell       # Find misspelled words
+    - nakedret       # Find naked returns
+    - nilerr         # Find nil error returns
+    - nilnil         # Check for nil,nil returns
+    - noctx          # Find HTTP requests without context
+    - prealloc       # Find slice preallocation opportunities
+    - predeclared    # Find shadowed predeclared identifiers
+    - revive         # Fast, configurable linter
+    - unconvert      # Remove unnecessary type conversions
+    - unparam        # Find unused function parameters
+    - whitespace     # Check whitespace issues
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+
+  gocognit:
+    min-complexity: 20
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+  gosec:
+    excludes:
+      - G104 # Audit errors not checked (too noisy)
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - dupl
+        - gosec
+        - gocognit
+
+    # Exclude known false positives
+    - linters:
+        - gocritic
+      text: "unnecessaryDefer"
+
+  max-issues-per-linter: 50
+  max-same-issues: 10
+
