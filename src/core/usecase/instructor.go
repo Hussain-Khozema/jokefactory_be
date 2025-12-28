@@ -110,7 +110,11 @@ func (s *InstructorService) StartRoundWithConfig(ctx context.Context, roundID in
 	return s.repo.StartRound(ctx, roundID, customerBudget, batchSize)
 }
 
-func (s *InstructorService) Stats(ctx context.Context, roundID int64) ([]ports.TeamStats, error) {
-	return s.repo.GetRoundStats(ctx, roundID)
+func (s *InstructorService) Stats(ctx context.Context, roundID int64) (*ports.RoundStats, error) {
+	stats, err := s.repo.GetRoundStatsV2(ctx, roundID)
+	if err != nil {
+		s.log.Error("instructor stats failed", "round_id", roundID, "error", err)
+		return nil, err
+	}
+	return stats, nil
 }
-

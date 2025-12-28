@@ -7,6 +7,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"jokefactory/src/core/domain"
 )
@@ -42,10 +43,10 @@ type TeamMember struct {
 
 // LobbySnapshot captures lobby state for instructor.
 type LobbySnapshot struct {
-	RoundID int64
-	Summary LobbySummary
-	Teams   []LobbyTeam
-	Customers []LobbyCustomer
+	RoundID    int64
+	Summary    LobbySummary
+	Teams      []LobbyTeam
+	Customers  []LobbyCustomer
 	Unassigned []LobbyUnassigned
 }
 
@@ -80,16 +81,16 @@ type LobbyUnassigned struct {
 
 // TeamSummary aggregates stats for a team in a round.
 type TeamSummary struct {
-	Team             domain.Team
-	RoundID          int64
-	Rank             int
-	Points           int
-	TotalSales       int
-	BatchesCreated   int
-	BatchesRated     int
-	AcceptedJokes    int
-	AvgScoreOverall  float64
-	UnratedBatches   int
+	Team            domain.Team
+	RoundID         int64
+	Rank            int
+	Points          int
+	TotalSales      int
+	BatchesCreated  int
+	BatchesRated    int
+	AcceptedJokes   int
+	AvgScoreOverall float64
+	UnratedBatches  int
 }
 
 // TeamStats is used for instructor round stats.
@@ -101,6 +102,63 @@ type TeamStats struct {
 	BatchesRated    int
 	AvgScoreOverall float64
 	AcceptedJokes   int
+}
+
+// CumulativeSalePoint represents sales growth over time.
+type CumulativeSalePoint struct {
+	EventIndex int       `json:"event_index"`
+	Timestamp  time.Time `json:"timestamp"`
+	TeamID     int64     `json:"team_id"`
+	TeamName   string    `json:"team_name"`
+	TotalSales int       `json:"total_sales"`
+}
+
+// BatchQualityPoint maps batch size to its average score.
+type BatchQualityPoint struct {
+	BatchID     int64      `json:"batch_id"`
+	TeamID      int64      `json:"team_id"`
+	TeamName    string     `json:"team_name"`
+	SubmittedAt *time.Time `json:"submitted_at"`
+	BatchSize   int        `json:"batch_size"`
+	AvgScore    float64    `json:"avg_score"`
+}
+
+// LearningCurvePoint shows quality by submission order for each team.
+type LearningCurvePoint struct {
+	TeamID     int64   `json:"team_id"`
+	TeamName   string  `json:"team_name"`
+	BatchOrder int     `json:"batch_order"`
+	AvgScore   float64 `json:"avg_score"`
+}
+
+// OutputRejectionPoint compares output volume vs rejection.
+type OutputRejectionPoint struct {
+	TeamID        int64   `json:"team_id"`
+	TeamName      string  `json:"team_name"`
+	TotalJokes    int     `json:"total_jokes"`
+	RatedJokes    int     `json:"rated_jokes"`
+	AcceptedJokes int     `json:"accepted_jokes"`
+	RejectionRate float64 `json:"rejection_rate"`
+}
+
+// RevenueAcceptancePoint maps revenue to acceptance rate per team.
+type RevenueAcceptancePoint struct {
+	TeamID         int64   `json:"team_id"`
+	TeamName       string  `json:"team_name"`
+	TotalSales     int     `json:"total_sales"`
+	AcceptedJokes  int     `json:"accepted_jokes"`
+	AcceptanceRate float64 `json:"acceptance_rate"`
+}
+
+// RoundStats aggregates leaderboard plus chart data for instructor dashboard.
+type RoundStats struct {
+	RoundID             int64                    `json:"round_id"`
+	Leaderboard         []TeamStats              `json:"leaderboard"`
+	CumulativeSales     []CumulativeSalePoint    `json:"cumulative_sales"`
+	BatchQualityBySize  []BatchQualityPoint      `json:"batch_quality_by_size"`
+	LearningCurve       []LearningCurvePoint     `json:"learning_curve"`
+	OutputVsRejection   []OutputRejectionPoint   `json:"output_vs_rejection"`
+	RevenueVsAcceptance []RevenueAcceptancePoint `json:"revenue_vs_acceptance"`
 }
 
 // GameRepository is a composite repository covering all domain operations.
@@ -157,5 +215,5 @@ type GameRepository interface {
 	GetTeamSummary(ctx context.Context, roundID, teamID int64) (*TeamSummary, error)
 	GetLobby(ctx context.Context, roundID int64) (*LobbySnapshot, error)
 	GetRoundStats(ctx context.Context, roundID int64) ([]TeamStats, error)
+	GetRoundStatsV2(ctx context.Context, roundID int64) (*RoundStats, error)
 }
-

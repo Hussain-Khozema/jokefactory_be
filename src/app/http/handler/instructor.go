@@ -144,12 +144,18 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 	}
 	stats, err := h.instructorService.Stats(c.Request.Context(), roundID)
 	if err != nil {
+		// Attach error for logging middleware; response keeps user-safe message.
+		c.Error(err)
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
 	response.OK(c, gin.H{
-		"round_id": roundID,
-		"teams":    stats,
+		"round_id":              stats.RoundID,
+		"leaderboard":           stats.Leaderboard,
+		"cumulative_sales":      stats.CumulativeSales,
+		"batch_quality_by_size": stats.BatchQualityBySize,
+		"learning_curve":        stats.LearningCurve,
+		"output_vs_rejection":   stats.OutputVsRejection,
+		"revenue_vs_acceptance": stats.RevenueVsAcceptance,
 	})
 }
-

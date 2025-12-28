@@ -37,14 +37,19 @@ func Logging(log *slog.Logger) gin.HandlerFunc {
 
 		reqBody := string(reqBodyBytes)
 		respBody := rec.body.String()
+		errText := ""
+		if len(c.Errors) > 0 {
+			errText = c.Errors.String()
+		}
 
-		logLine := fmt.Sprintf("%s | %s | %s | %s | request: %s | response: %s |",
+		logLine := fmt.Sprintf("%s | %s | %s | %s | request: %s | response: %s | errors: %s |",
 			time.Now().Format(time.RFC3339Nano),
 			levelString(c.Writer.Status()),
 			requestID,
 			api,
 			reqBody,
 			respBody,
+			errText,
 		)
 
 		// Choose log level based on status code and emit single-line log
@@ -86,4 +91,3 @@ func levelString(status int) string {
 		return "INFO"
 	}
 }
-

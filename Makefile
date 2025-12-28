@@ -114,3 +114,6 @@ dev-deps: ## Install development dependencies
 generate: ## Run go generate
 	$(GOCMD) generate ./...
 
+restart: 
+	$(DOCKER_COMPOSE) build api
+	$(DOCKER_COMPOSE) up -d --force-recreate
