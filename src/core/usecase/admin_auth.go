@@ -13,6 +13,11 @@ type AdminAuthService struct {
 	adminPassword string
 }
 
+const (
+	defaultInstructorCustomerBudget = 0
+	defaultInstructorBatchSize      = 1
+)
+
 func NewAdminAuthService(repo ports.GameRepository, adminPassword string) *AdminAuthService {
 	return &AdminAuthService{repo: repo, adminPassword: adminPassword}
 }
@@ -53,6 +58,13 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 	if err != nil {
 		return nil, err
 	}
+	if round == nil {
+		roundID := int64(1)
+		round, err = s.repo.InsertRoundConfig(ctx, roundID, defaultInstructorCustomerBudget, defaultInstructorBatchSize)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return &AdminLoginResult{
 		User:  user,
@@ -60,3 +72,7 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 	}, nil
 }
 
+// ResetGame clears all game data (guarded by upstream instructor auth).
+func (s *AdminAuthService) ResetGame(ctx context.Context) error {
+	return s.repo.ResetGame(ctx)
+}

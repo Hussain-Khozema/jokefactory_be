@@ -1358,3 +1358,33 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 
 	return result, nil
 }
+
+// ResetGame removes all game data from the database. Intended for admin use only.
+func (r *PostgresRepository) ResetGame(ctx context.Context) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	const truncateQ = `
+		TRUNCATE TABLE
+			purchases,
+			customer_round_budget,
+			published_jokes,
+			joke_ratings,
+			jokes,
+			batches,
+			team_rounds_state,
+			round_participants,
+			rounds,
+			users,
+			teams
+		RESTART IDENTITY CASCADE
+	`
+
+	if _, err := tx.Exec(ctx, truncateQ); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

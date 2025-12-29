@@ -216,4 +216,7 @@ type GameRepository interface {
 	GetLobby(ctx context.Context, roundID int64) (*LobbySnapshot, error)
 	GetRoundStats(ctx context.Context, roundID int64) ([]TeamStats, error)
 	GetRoundStatsV2(ctx context.Context, roundID int64) (*RoundStats, error)
+
+	// Admin utilities
+	ResetGame(ctx context.Context) error
 }

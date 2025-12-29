@@ -48,3 +48,15 @@ func (h *AdminHandler) Login(c *gin.Context) {
 	})
 }
 
+// ResetGame clears all game data. Protected by the admin password.
+func (h *AdminHandler) ResetGame(c *gin.Context) {
+	if err := h.adminService.ResetGame(c.Request.Context()); err != nil {
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+
+	response.OK(c, gin.H{
+		"status":  "reset",
+		"message": "all game data cleared",
+	})
+}

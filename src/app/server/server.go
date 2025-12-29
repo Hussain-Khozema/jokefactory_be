@@ -16,8 +16,8 @@ import (
 
 	"jokefactory/src/app/http/handler"
 	"jokefactory/src/app/middleware"
-	"jokefactory/src/core/usecase"
 	"jokefactory/src/core/ports"
+	"jokefactory/src/core/usecase"
 	"jokefactory/src/infra/config"
 )
 
@@ -27,16 +27,17 @@ type Server struct {
 	log    *slog.Logger
 	router *gin.Engine
 	http   *http.Server
+	repo   ports.GameRepository
 
 	// Handlers
-	healthHandler *handler.HealthHandler
-	sessionHandler *handler.SessionHandler
-	roundHandler   *handler.RoundHandler
-	batchHandler   *handler.BatchHandler
-	qcHandler      *handler.QCHandler
-	customerHandler *handler.CustomerHandler
+	healthHandler     *handler.HealthHandler
+	sessionHandler    *handler.SessionHandler
+	roundHandler      *handler.RoundHandler
+	batchHandler      *handler.BatchHandler
+	qcHandler         *handler.QCHandler
+	customerHandler   *handler.CustomerHandler
 	instructorHandler *handler.InstructorHandler
-	adminHandler *handler.AdminHandler
+	adminHandler      *handler.AdminHandler
 }
 
 // New creates a new Server with all dependencies wired up.
@@ -72,17 +73,18 @@ func New(cfg *config.Config, log *slog.Logger, repo ports.GameRepository) *Serve
 	adminHandler := handler.NewAdminHandler(adminService)
 
 	s := &Server{
-		cfg:           cfg,
-		log:           log,
-		router:        router,
-		healthHandler: healthHandler,
-		sessionHandler: sessionHandler,
-		roundHandler: roundHandler,
-		batchHandler: batchHandler,
-		qcHandler: qcHandler,
-		customerHandler: customerHandler,
+		cfg:               cfg,
+		log:               log,
+		router:            router,
+		repo:              repo,
+		healthHandler:     healthHandler,
+		sessionHandler:    sessionHandler,
+		roundHandler:      roundHandler,
+		batchHandler:      batchHandler,
+		qcHandler:         qcHandler,
+		customerHandler:   customerHandler,
 		instructorHandler: instructorHandler,
-		adminHandler: adminHandler,
+		adminHandler:      adminHandler,
 	}
 
 	s.setupMiddleware()
@@ -139,15 +141,20 @@ func (s *Server) setupRoutes() {
 		v1.GET("/rounds/:round_id/customers/budget", s.customerHandler.Budget)
 		v1.POST("/rounds/:round_id/market/:joke_id/buy", s.customerHandler.Buy)
 		v1.POST("/rounds/:round_id/market/:joke_id/return", s.customerHandler.Return)
+	}
 
-		// Instructor
-		v1.GET("/instructor/rounds/:round_id/lobby", s.instructorHandler.Lobby)
-		v1.POST("/instructor/rounds/:round_id/config", s.instructorHandler.Config)
-		v1.POST("/instructor/rounds/:round_id/assign", s.instructorHandler.Assign)
-		v1.PATCH("/instructor/rounds/:round_id/users/:user_id", s.instructorHandler.PatchUser)
-		v1.POST("/instructor/rounds/:round_id/start", s.instructorHandler.StartRound)
-		v1.POST("/instructor/rounds/:round_id/end", s.instructorHandler.EndRound)
-		v1.GET("/instructor/rounds/:round_id/stats", s.instructorHandler.Stats)
+	// Instructor-protected routes
+	instructor := v1.Group("", middleware.InstructorAuth(s.repo))
+	{
+		instructor.POST("/admin/reset", s.adminHandler.ResetGame)
+
+		instructor.GET("/instructor/rounds/:round_id/lobby", s.instructorHandler.Lobby)
+		instructor.POST("/instructor/rounds/:round_id/config", s.instructorHandler.Config)
+		instructor.POST("/instructor/rounds/:round_id/assign", s.instructorHandler.Assign)
+		instructor.PATCH("/instructor/rounds/:round_id/users/:user_id", s.instructorHandler.PatchUser)
+		instructor.POST("/instructor/rounds/:round_id/start", s.instructorHandler.StartRound)
+		instructor.POST("/instructor/rounds/:round_id/end", s.instructorHandler.EndRound)
+		instructor.GET("/instructor/rounds/:round_id/stats", s.instructorHandler.Stats)
 	}
 
 	// Handle 404
@@ -240,4 +247,3 @@ func (s *Server) WaitForReady(timeout time.Duration) error {
 	}
 	return fmt.Errorf("server not ready after %v", timeout)
 }
-
