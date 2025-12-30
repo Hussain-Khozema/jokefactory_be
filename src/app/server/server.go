@@ -152,6 +152,7 @@ func (s *Server) setupRoutes() {
 		instructor.POST("/instructor/rounds/:round_id/config", s.instructorHandler.Config)
 		instructor.POST("/instructor/rounds/:round_id/assign", s.instructorHandler.Assign)
 		instructor.PATCH("/instructor/rounds/:round_id/users/:user_id", s.instructorHandler.PatchUser)
+		instructor.DELETE("/instructor/rounds/:round_id/users/:user_id", s.instructorHandler.DeleteUser)
 		instructor.POST("/instructor/rounds/:round_id/start", s.instructorHandler.StartRound)
 		instructor.POST("/instructor/rounds/:round_id/end", s.instructorHandler.EndRound)
 		instructor.GET("/instructor/rounds/:round_id/stats", s.instructorHandler.Stats)

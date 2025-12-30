@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS teams (
 -- =========================
 CREATE TABLE IF NOT EXISTS users (
   user_id      BIGSERIAL PRIMARY KEY,
-  display_name TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
   role         user_role NULL,
   team_id      BIGINT NULL REFERENCES teams(id) ON DELETE SET NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()

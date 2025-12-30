@@ -118,3 +118,8 @@ func (s *InstructorService) Stats(ctx context.Context, roundID int64) (*ports.Ro
 	}
 	return stats, nil
 }
+
+// DeleteUser removes a non-instructor user from the given round and database.
+func (s *InstructorService) DeleteUser(ctx context.Context, roundID, userID int64) error {
+	return s.repo.DeleteUserFromRound(ctx, roundID, userID)
+}

@@ -244,6 +244,44 @@ func (r *PostgresRepository) ListCustomers(ctx context.Context, roundID int64) (
 	return customers, nil
 }
 
+// DeleteUserFromRound removes a non-instructor user from the given round and deletes the user record.
+func (r *PostgresRepository) DeleteUserFromRound(ctx context.Context, roundID, userID int64) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var role *string
+	if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE user_id = $1`, userID).Scan(&role); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.NewNotFoundError("user")
+		}
+		return err
+	}
+	if role != nil && *role == string(domain.RoleInstructor) {
+		return domain.NewConflictError("cannot delete instructor user")
+	}
+
+	res, err := tx.Exec(ctx, `DELETE FROM round_participants WHERE round_id = $1 AND user_id = $2`, roundID, userID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return domain.NewNotFoundError("participant")
+	}
+
+	res, err = tx.Exec(ctx, `DELETE FROM users WHERE user_id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return domain.NewNotFoundError("user")
+	}
+
+	return tx.Commit(ctx)
+}
+
 // Teams
 
 func (r *PostgresRepository) EnsureTeamCount(ctx context.Context, teamCount int) ([]domain.Team, error) {

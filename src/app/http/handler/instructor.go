@@ -159,3 +159,24 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 		"revenue_vs_acceptance": stats.RevenueVsAcceptance,
 	})
 }
+
+// DeleteUser removes a non-instructor user from the round and database.
+func (h *InstructorHandler) DeleteUser(c *gin.Context) {
+	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
+		return
+	}
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid user id", middleware.GetRequestID(c))
+		return
+	}
+
+	if err := h.instructorService.DeleteUser(c.Request.Context(), roundID, userID); err != nil {
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+
+	response.OK(c, gin.H{"deleted_user_id": userID})
+}

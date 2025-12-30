@@ -178,6 +178,7 @@ type GameRepository interface {
 	ListParticipantsByStatus(ctx context.Context, roundID int64, status domain.ParticipantStatus) ([]domain.User, error)
 	ListTeamMembers(ctx context.Context, teamID int64) ([]TeamMember, error)
 	ListCustomers(ctx context.Context, roundID int64) ([]LobbyCustomer, error)
+	DeleteUserFromRound(ctx context.Context, roundID, userID int64) error
 
 	// Teams
 	EnsureTeamCount(ctx context.Context, teamCount int) ([]domain.Team, error)
