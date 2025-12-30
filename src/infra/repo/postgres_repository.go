@@ -1413,6 +1413,7 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 	}
 	defer tx.Rollback(ctx)
 
+	// Clear gameplay data but keep instructor accounts.
 	const truncateQ = `
 		TRUNCATE TABLE
 			purchases,
@@ -1423,14 +1424,24 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 			batches,
 			team_rounds_state,
 			round_participants,
-			rounds,
-			users,
-			teams
+			rounds
 		RESTART IDENTITY CASCADE
 	`
-
 	if _, err := tx.Exec(ctx, truncateQ); err != nil {
 		return err
 	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM teams`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `ALTER SEQUENCE teams_id_seq RESTART WITH 1`); err != nil {
+		return err
+	}
+
+	// Delete all non-instructor users; keep instructors intact.
+	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE role IS DISTINCT FROM 'INSTRUCTOR'`); err != nil {
+		return err
+	}
+
 	return tx.Commit(ctx)
 }
