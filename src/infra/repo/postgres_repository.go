@@ -176,7 +176,7 @@ func (r *PostgresRepository) ListParticipantsByStatus(ctx context.Context, round
 		SELECT u.user_id, u.display_name, u.role, u.team_id, u.created_at
 		FROM round_participants rp
 		JOIN users u ON u.user_id = rp.user_id
-		WHERE rp.round_id = $1 AND rp.status = $2
+		WHERE rp.round_id = $1 AND rp.status = $2 AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')
 		ORDER BY rp.joined_at ASC
 	`
 	rows, err := r.pool.Query(ctx, q, roundID, status)
@@ -200,7 +200,7 @@ func (r *PostgresRepository) ListTeamMembers(ctx context.Context, teamID int64) 
 	const q = `
 		SELECT user_id, display_name, role
 		FROM users
-		WHERE team_id = $1 AND role IS NOT NULL
+		WHERE team_id = $1 AND role IS NOT NULL AND role <> 'INSTRUCTOR'
 		ORDER BY user_id
 	`
 	rows, err := r.pool.Query(ctx, q, teamID)
@@ -1066,8 +1066,12 @@ func (r *PostgresRepository) GetLobby(ctx context.Context, roundID int64) (*port
 
 	const summaryQ = `
 		SELECT
-			(SELECT COUNT(*) FROM round_participants WHERE round_id = $1 AND status = 'WAITING') AS waiting,
-			(SELECT COUNT(*) FROM round_participants WHERE round_id = $1 AND status = 'ASSIGNED') AS assigned
+			(SELECT COUNT(*) FROM round_participants rp
+				JOIN users u ON u.user_id = rp.user_id
+				WHERE rp.round_id = $1 AND rp.status = 'WAITING' AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')) AS waiting,
+			(SELECT COUNT(*) FROM round_participants rp
+				JOIN users u ON u.user_id = rp.user_id
+				WHERE rp.round_id = $1 AND rp.status = 'ASSIGNED' AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')) AS assigned
 	`
 	if err := r.pool.QueryRow(ctx, summaryQ, roundID).Scan(&snapshot.Summary.Waiting, &snapshot.Summary.Assigned); err != nil {
 		return nil, err
@@ -1108,6 +1112,10 @@ func (r *PostgresRepository) GetLobby(ctx context.Context, roundID int64) (*port
 		return nil, err
 	}
 	for _, u := range waiting {
+		if u.Role != nil && *u.Role == domain.RoleInstructor {
+			// Skip instructors in lobby snapshot
+			continue
+		}
 		snapshot.Unassigned = append(snapshot.Unassigned, ports.LobbyUnassigned{
 			UserID:      u.ID,
 			DisplayName: u.DisplayName,

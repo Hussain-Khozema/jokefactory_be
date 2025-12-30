@@ -57,6 +57,13 @@ func (s *SessionService) Join(ctx context.Context, displayName string) (*Session
 		} else {
 			return nil, err
 		}
+	} else if user.Role != nil && *user.Role == domain.RoleInstructor {
+		// Avoid logging into instructor accounts from the student join flow.
+		// Create a fresh user with the same display name but no role.
+		user, err = s.repo.CreateUser(ctx, displayName)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	participant, err := s.repo.EnsureParticipant(ctx, round.ID, user.ID)
@@ -108,4 +115,3 @@ func (s *SessionService) Me(ctx context.Context, userID int64) (*SessionMeResult
 		Participant: participant,
 	}, nil
 }
-
