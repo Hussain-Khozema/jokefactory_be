@@ -83,7 +83,6 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 // ResetGame clears all game data (guarded by upstream instructor auth).
 func (s *AdminAuthService) ResetGame(ctx context.Context) error {
 	if err := s.repo.ResetGame(ctx); err != nil {
-		s.log.Error("admin reset failed", "error", err)
 		return err
 	}
 	return nil
