@@ -136,6 +136,37 @@ func (h *InstructorHandler) EndRound(c *gin.Context) {
 	response.OK(c, gin.H{"round": round})
 }
 
+func (h *InstructorHandler) SetPopupState(c *gin.Context) {
+	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
+		return
+	}
+
+	var req dto.PopupStateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid payload", middleware.GetRequestID(c))
+		return
+	}
+
+	round, err := h.instructorService.SetPopupState(c.Request.Context(), roundID, req.IsPoppedActive)
+	if err != nil {
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+
+	response.OK(c, gin.H{"round": gin.H{
+		"id":               round.ID,
+		"round_number":     round.RoundNumber,
+		"status":           round.Status,
+		"customer_budget":  round.CustomerBudget,
+		"batch_size":       round.BatchSize,
+		"started_at":       round.StartedAt,
+		"ended_at":         round.EndedAt,
+		"is_popped_active": round.IsPoppedActive,
+	}})
+}
+
 func (h *InstructorHandler) Stats(c *gin.Context) {
 	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
 	if err != nil {

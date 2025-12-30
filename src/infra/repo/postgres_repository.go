@@ -48,10 +48,10 @@ func (r *PostgresRepository) CreateUser(ctx context.Context, displayName string)
 	const q = `
 		INSERT INTO users (display_name)
 		VALUES ($1)
-		RETURNING user_id, display_name, role, team_id, created_at
+		RETURNING user_id, display_name, role, team_id, status, assigned_at, joined_at, created_at
 	`
 	var u domain.User
-	err := r.pool.QueryRow(ctx, q, displayName).Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.CreatedAt)
+	err := r.pool.QueryRow(ctx, q, displayName).Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.Status, &u.AssignedAt, &u.JoinedAt, &u.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, domain.NewConflictError("display name already taken")
@@ -63,12 +63,12 @@ func (r *PostgresRepository) CreateUser(ctx context.Context, displayName string)
 
 func (r *PostgresRepository) GetUserByDisplayName(ctx context.Context, displayName string) (*domain.User, error) {
 	const q = `
-		SELECT user_id, display_name, role, team_id, created_at
+		SELECT user_id, display_name, role, team_id, status, assigned_at, joined_at, created_at
 		FROM users
 		WHERE display_name = $1
 	`
 	var u domain.User
-	if err := r.pool.QueryRow(ctx, q, displayName).Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.CreatedAt); err != nil {
+	if err := r.pool.QueryRow(ctx, q, displayName).Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.Status, &u.AssignedAt, &u.JoinedAt, &u.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("user")
 		}
@@ -79,48 +79,18 @@ func (r *PostgresRepository) GetUserByDisplayName(ctx context.Context, displayNa
 
 func (r *PostgresRepository) GetUserByID(ctx context.Context, userID int64) (*domain.User, error) {
 	const q = `
-		SELECT user_id, display_name, role, team_id, created_at
+		SELECT user_id, display_name, role, team_id, status, assigned_at, joined_at, created_at
 		FROM users
 		WHERE user_id = $1
 	`
 	var u domain.User
-	if err := r.pool.QueryRow(ctx, q, userID).Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.CreatedAt); err != nil {
+	if err := r.pool.QueryRow(ctx, q, userID).Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.Status, &u.AssignedAt, &u.JoinedAt, &u.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("user")
 		}
 		return nil, err
 	}
 	return &u, nil
-}
-
-func (r *PostgresRepository) EnsureParticipant(ctx context.Context, roundID, userID int64) (*domain.RoundParticipant, error) {
-	const q = `
-		INSERT INTO round_participants (round_id, user_id)
-		VALUES ($1, $2)
-		ON CONFLICT (round_id, user_id) DO NOTHING
-	`
-	if _, err := r.pool.Exec(ctx, q, roundID, userID); err != nil {
-		return nil, err
-	}
-	return r.GetParticipant(ctx, roundID, userID)
-}
-
-func (r *PostgresRepository) GetParticipant(ctx context.Context, roundID, userID int64) (*domain.RoundParticipant, error) {
-	const q = `
-		SELECT round_id, user_id, status, joined_at, assigned_at
-		FROM round_participants
-		WHERE round_id = $1 AND user_id = $2
-	`
-	var p domain.RoundParticipant
-	if err := r.pool.QueryRow(ctx, q, roundID, userID).Scan(
-		&p.RoundID, &p.UserID, &p.Status, &p.JoinedAt, &p.AssignedAt,
-	); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.NewNotFoundError("participant")
-		}
-		return nil, err
-	}
-	return &p, nil
 }
 
 func (r *PostgresRepository) UpdateUserAssignment(ctx context.Context, userID int64, role *domain.Role, teamID *int64) error {
@@ -139,47 +109,47 @@ func (r *PostgresRepository) UpdateUserAssignment(ctx context.Context, userID in
 	return nil
 }
 
-func (r *PostgresRepository) UpdateParticipantStatus(ctx context.Context, roundID, userID int64, status domain.ParticipantStatus) error {
+func (r *PostgresRepository) UpdateUserStatus(ctx context.Context, userID int64, status domain.ParticipantStatus) error {
 	const q = `
-		UPDATE round_participants
-		SET status = $3
-		WHERE round_id = $1 AND user_id = $2
+		UPDATE users
+		SET status = $2::participant_status,
+		    assigned_at = CASE WHEN $2::participant_status = 'ASSIGNED' THEN assigned_at ELSE NULL END
+		WHERE user_id = $1
 	`
-	res, err := r.pool.Exec(ctx, q, roundID, userID, status)
+	res, err := r.pool.Exec(ctx, q, userID, status)
 	if err != nil {
 		return err
 	}
 	if res.RowsAffected() == 0 {
-		return domain.NewNotFoundError("participant")
+		return domain.NewNotFoundError("user")
 	}
 	return nil
 }
 
-func (r *PostgresRepository) MarkParticipantAssigned(ctx context.Context, roundID, userID int64) error {
+func (r *PostgresRepository) MarkUserAssigned(ctx context.Context, userID int64) error {
 	const q = `
-		UPDATE round_participants
+		UPDATE users
 		SET status = 'ASSIGNED', assigned_at = now()
-		WHERE round_id = $1 AND user_id = $2
+		WHERE user_id = $1
 	`
-	res, err := r.pool.Exec(ctx, q, roundID, userID)
+	res, err := r.pool.Exec(ctx, q, userID)
 	if err != nil {
 		return err
 	}
 	if res.RowsAffected() == 0 {
-		return domain.NewNotFoundError("participant")
+		return domain.NewNotFoundError("user")
 	}
 	return nil
 }
 
-func (r *PostgresRepository) ListParticipantsByStatus(ctx context.Context, roundID int64, status domain.ParticipantStatus) ([]domain.User, error) {
+func (r *PostgresRepository) ListUsersByStatus(ctx context.Context, status domain.ParticipantStatus) ([]domain.User, error) {
 	const q = `
-		SELECT u.user_id, u.display_name, u.role, u.team_id, u.created_at
-		FROM round_participants rp
-		JOIN users u ON u.user_id = rp.user_id
-		WHERE rp.round_id = $1 AND rp.status = $2 AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')
-		ORDER BY rp.joined_at ASC
+		SELECT user_id, display_name, role, team_id, status, assigned_at, joined_at, created_at
+		FROM users
+		WHERE status = $1::participant_status AND (role IS NULL OR role <> 'INSTRUCTOR')
+		ORDER BY joined_at ASC
 	`
-	rows, err := r.pool.Query(ctx, q, roundID, status)
+	rows, err := r.pool.Query(ctx, q, status)
 	if err != nil {
 		return nil, err
 	}
@@ -188,12 +158,35 @@ func (r *PostgresRepository) ListParticipantsByStatus(ctx context.Context, round
 	var users []domain.User
 	for rows.Next() {
 		var u domain.User
-		if err := rows.Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.DisplayName, &u.Role, &u.TeamID, &u.Status, &u.AssignedAt, &u.JoinedAt, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
 	}
 	return users, nil
+}
+
+func (r *PostgresRepository) ListCustomers(ctx context.Context) ([]ports.LobbyCustomer, error) {
+	const q = `
+		SELECT user_id, display_name, role
+		FROM users
+		WHERE role = 'CUSTOMER'
+		ORDER BY user_id
+	`
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var customers []ports.LobbyCustomer
+	for rows.Next() {
+		var c ports.LobbyCustomer
+		if err := rows.Scan(&c.UserID, &c.DisplayName, &c.Role); err != nil {
+			return nil, err
+		}
+		customers = append(customers, c)
+	}
+	return customers, nil
 }
 
 func (r *PostgresRepository) ListTeamMembers(ctx context.Context, teamID int64) ([]ports.TeamMember, error) {
@@ -220,32 +213,8 @@ func (r *PostgresRepository) ListTeamMembers(ctx context.Context, teamID int64) 
 	return members, nil
 }
 
-func (r *PostgresRepository) ListCustomers(ctx context.Context, roundID int64) ([]ports.LobbyCustomer, error) {
-	const q = `
-		SELECT u.user_id, u.display_name, u.role
-		FROM round_participants rp
-		JOIN users u ON u.user_id = rp.user_id
-		WHERE rp.round_id = $1 AND u.role = 'CUSTOMER'
-		ORDER BY u.user_id
-	`
-	rows, err := r.pool.Query(ctx, q, roundID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var customers []ports.LobbyCustomer
-	for rows.Next() {
-		var c ports.LobbyCustomer
-		if err := rows.Scan(&c.UserID, &c.DisplayName, &c.Role); err != nil {
-			return nil, err
-		}
-		customers = append(customers, c)
-	}
-	return customers, nil
-}
-
-// DeleteUserFromRound removes a non-instructor user from the given round and deletes the user record.
-func (r *PostgresRepository) DeleteUserFromRound(ctx context.Context, roundID, userID int64) error {
+// DeleteUser removes a non-instructor user from the database.
+func (r *PostgresRepository) DeleteUser(ctx context.Context, userID int64) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -263,15 +232,7 @@ func (r *PostgresRepository) DeleteUserFromRound(ctx context.Context, roundID, u
 		return domain.NewConflictError("cannot delete instructor user")
 	}
 
-	res, err := tx.Exec(ctx, `DELETE FROM round_participants WHERE round_id = $1 AND user_id = $2`, roundID, userID)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return domain.NewNotFoundError("participant")
-	}
-
-	res, err = tx.Exec(ctx, `DELETE FROM users WHERE user_id = $1`, userID)
+	res, err := tx.Exec(ctx, `DELETE FROM users WHERE user_id = $1`, userID)
 	if err != nil {
 		return err
 	}
@@ -337,7 +298,7 @@ func (r *PostgresRepository) GetTeam(ctx context.Context, teamID int64) (*domain
 
 func (r *PostgresRepository) GetActiveRound(ctx context.Context) (*domain.Round, error) {
 	const q = `
-		SELECT round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at
+		SELECT round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 		FROM rounds
 		WHERE status = 'ACTIVE'
 		LIMIT 1
@@ -345,7 +306,7 @@ func (r *PostgresRepository) GetActiveRound(ctx context.Context) (*domain.Round,
 	var rd domain.Round
 	err := r.pool.QueryRow(ctx, q).Scan(
 		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
-		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt,
+		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -358,13 +319,13 @@ func (r *PostgresRepository) GetActiveRound(ctx context.Context) (*domain.Round,
 
 func (r *PostgresRepository) GetRoundByID(ctx context.Context, roundID int64) (*domain.Round, error) {
 	const q = `
-		SELECT round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at
+		SELECT round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 		FROM rounds WHERE round_id = $1
 	`
 	var rd domain.Round
 	if err := r.pool.QueryRow(ctx, q, roundID).Scan(
 		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
-		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt,
+		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
@@ -376,7 +337,7 @@ func (r *PostgresRepository) GetRoundByID(ctx context.Context, roundID int64) (*
 
 func (r *PostgresRepository) GetLatestRound(ctx context.Context) (*domain.Round, error) {
 	const q = `
-		SELECT round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at
+		SELECT round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 		FROM rounds
 		ORDER BY round_id DESC
 		LIMIT 1
@@ -384,7 +345,7 @@ func (r *PostgresRepository) GetLatestRound(ctx context.Context) (*domain.Round,
 	var rd domain.Round
 	err := r.pool.QueryRow(ctx, q).Scan(
 		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
-		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt,
+		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -395,17 +356,43 @@ func (r *PostgresRepository) GetLatestRound(ctx context.Context) (*domain.Round,
 	return &rd, nil
 }
 
+func (r *PostgresRepository) ListRounds(ctx context.Context) ([]domain.Round, error) {
+	const q = `
+		SELECT round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
+		FROM rounds
+		ORDER BY round_id ASC
+	`
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rounds []domain.Round
+	for rows.Next() {
+		var rd domain.Round
+		if err := rows.Scan(
+			&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
+			&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
+		); err != nil {
+			return nil, err
+		}
+		rounds = append(rounds, rd)
+	}
+	return rounds, nil
+}
+
 func (r *PostgresRepository) UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error) {
 	const q = `
 		UPDATE rounds
 		SET customer_budget = $2, batch_size = $3
 		WHERE round_id = $1
-		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at
+		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
 	if err := r.pool.QueryRow(ctx, q, roundID, customerBudget, batchSize).Scan(
 		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
-		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt,
+		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
@@ -431,11 +418,11 @@ func (r *PostgresRepository) InsertRoundConfig(ctx context.Context, roundID int6
 	const q = `
 		INSERT INTO rounds (round_id, round_number, status, customer_budget, batch_size)
 		VALUES ($1, $2, 'CONFIGURED', $3, $4)
-		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at
+		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 	`
 	if err := r.pool.QueryRow(ctx, q, roundID, roundNumber, customerBudget, batchSize).Scan(
 		&inserted.ID, &inserted.RoundNumber, &inserted.Status, &inserted.CustomerBudget, &inserted.BatchSize,
-		&inserted.StartedAt, &inserted.EndedAt, &inserted.CreatedAt,
+		&inserted.StartedAt, &inserted.EndedAt, &inserted.CreatedAt, &inserted.IsPoppedActive,
 	); err != nil {
 		r.log.Error("InsertRoundConfig insert failed", "round_id", roundID, "err", err)
 		return nil, err
@@ -453,12 +440,12 @@ func (r *PostgresRepository) StartRound(ctx context.Context, roundID int64, cust
 		    started_at = COALESCE(started_at, now()),
 		    ended_at = NULL
 		WHERE round_id = $1
-		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at
+		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
 	if err := r.pool.QueryRow(ctx, q, roundID, customerBudget, batchSize).Scan(
 		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
-		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt,
+		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
@@ -473,12 +460,32 @@ func (r *PostgresRepository) EndRound(ctx context.Context, roundID int64) (*doma
 		UPDATE rounds
 		SET status = 'ENDED', ended_at = now()
 		WHERE round_id = $1
-		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at
+		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
 	if err := r.pool.QueryRow(ctx, q, roundID).Scan(
 		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
-		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt,
+		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.NewNotFoundError("round")
+		}
+		return nil, err
+	}
+	return &rd, nil
+}
+
+func (r *PostgresRepository) SetRoundPopupState(ctx context.Context, roundID int64, isActive bool) (*domain.Round, error) {
+	const q = `
+		UPDATE rounds
+		SET is_popped_active = $2
+		WHERE round_id = $1
+		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
+	`
+	var rd domain.Round
+	if err := r.pool.QueryRow(ctx, q, roundID, isActive).Scan(
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
+		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
@@ -1104,14 +1111,12 @@ func (r *PostgresRepository) GetLobby(ctx context.Context, roundID int64) (*port
 
 	const summaryQ = `
 		SELECT
-			(SELECT COUNT(*) FROM round_participants rp
-				JOIN users u ON u.user_id = rp.user_id
-				WHERE rp.round_id = $1 AND rp.status = 'WAITING' AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')) AS waiting,
-			(SELECT COUNT(*) FROM round_participants rp
-				JOIN users u ON u.user_id = rp.user_id
-				WHERE rp.round_id = $1 AND rp.status = 'ASSIGNED' AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')) AS assigned
+			(SELECT COUNT(*) FROM users u
+				WHERE u.status = 'WAITING' AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')) AS waiting,
+			(SELECT COUNT(*) FROM users u
+				WHERE u.status = 'ASSIGNED' AND (u.role IS NULL OR u.role <> 'INSTRUCTOR')) AS assigned
 	`
-	if err := r.pool.QueryRow(ctx, summaryQ, roundID).Scan(&snapshot.Summary.Waiting, &snapshot.Summary.Assigned); err != nil {
+	if err := r.pool.QueryRow(ctx, summaryQ).Scan(&snapshot.Summary.Waiting, &snapshot.Summary.Assigned); err != nil {
 		return nil, err
 	}
 	snapshot.Summary.Dropped = 0
@@ -1137,7 +1142,7 @@ func (r *PostgresRepository) GetLobby(ctx context.Context, roundID int64) (*port
 	}
 	snapshot.Summary.TeamCount = len(snapshot.Teams)
 
-	customers, err := r.ListCustomers(ctx, roundID)
+	customers, err := r.ListCustomers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1145,7 +1150,7 @@ func (r *PostgresRepository) GetLobby(ctx context.Context, roundID int64) (*port
 	snapshot.Summary.CustomerCount = len(customers)
 
 	// unassigned (waiting)
-	waiting, err := r.ListParticipantsByStatus(ctx, roundID, domain.ParticipantWaiting)
+	waiting, err := r.ListUsersByStatus(ctx, domain.ParticipantWaiting)
 	if err != nil {
 		return nil, err
 	}
@@ -1409,6 +1414,7 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
+		r.log.Error("ResetGame: begin tx failed", "error", err)
 		return err
 	}
 	defer tx.Rollback(ctx)
@@ -1423,23 +1429,26 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 			jokes,
 			batches,
 			team_rounds_state,
-			round_participants,
 			rounds
 		RESTART IDENTITY CASCADE
 	`
 	if _, err := tx.Exec(ctx, truncateQ); err != nil {
+		r.log.Error("ResetGame: truncate failed", "error", err)
 		return err
 	}
 
 	if _, err := tx.Exec(ctx, `DELETE FROM teams`); err != nil {
+		r.log.Error("ResetGame: delete teams failed", "error", err)
 		return err
 	}
 	if _, err := tx.Exec(ctx, `ALTER SEQUENCE teams_id_seq RESTART WITH 1`); err != nil {
+		r.log.Error("ResetGame: reset team sequence failed", "error", err)
 		return err
 	}
 
 	// Delete all non-instructor users; keep instructors intact.
 	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE role IS DISTINCT FROM 'INSTRUCTOR'`); err != nil {
+		r.log.Error("ResetGame: delete users failed", "error", err)
 		return err
 	}
 

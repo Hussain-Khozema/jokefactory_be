@@ -30,6 +30,8 @@ func (h *SessionHandler) Join(c *gin.Context) {
 
 	res, err := h.sessionService.Join(c.Request.Context(), req.DisplayName)
 	if err != nil {
+		// Attach error for middleware logging
+		c.Error(err)
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
@@ -39,11 +41,10 @@ func (h *SessionHandler) Join(c *gin.Context) {
 			"user_id":      res.User.ID,
 			"display_name": res.User.DisplayName,
 		},
-		"round_id": res.Round.ID,
 		"participant": gin.H{
-			"status":      res.Participant.Status,
-			"joined_at":   res.Participant.JoinedAt,
-			"assigned_at": res.Participant.AssignedAt,
+			"status":      res.User.Status,
+			"joined_at":   res.User.JoinedAt,
+			"assigned_at": res.User.AssignedAt,
 		},
 	})
 }
@@ -68,30 +69,10 @@ func (h *SessionHandler) Me(c *gin.Context) {
 		team = *res.User.TeamID
 	}
 
-	var participant interface{}
-	if res.Participant != nil {
-		participant = gin.H{
-			"status":      res.Participant.Status,
-			"joined_at":   res.Participant.JoinedAt,
-			"assigned_at": res.Participant.AssignedAt,
-		}
-	} else {
-		participant = nil
-	}
-
-	var round interface{}
-	if res.Round != nil {
-		round = gin.H{
-			"id":              res.Round.ID,
-			"round_number":    res.Round.RoundNumber,
-			"status":          res.Round.Status,
-			"customer_budget": res.Round.CustomerBudget,
-			"batch_size":      res.Round.BatchSize,
-			"started_at":      res.Round.StartedAt,
-			"ended_at":        res.Round.EndedAt,
-		}
-	} else {
-		round = nil
+	participant := gin.H{
+		"status":      res.User.Status,
+		"joined_at":   res.User.JoinedAt,
+		"assigned_at": res.User.AssignedAt,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -99,8 +80,6 @@ func (h *SessionHandler) Me(c *gin.Context) {
 			"user_id":      res.User.ID,
 			"display_name": res.User.DisplayName,
 		},
-		"round_id": res.Round.ID,
-		"round":    round,
 		"participant": participant,
 		"assignment": gin.H{
 			"role":    role,

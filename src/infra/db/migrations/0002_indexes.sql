@@ -4,16 +4,10 @@ BEGIN;
 -- rounds
 CREATE INDEX IF NOT EXISTS idx_rounds_status ON rounds(status);
 
--- round_participants (lobby lookups)
-CREATE INDEX IF NOT EXISTS idx_round_participants_round_status
-ON round_participants(round_id, status);
-
-CREATE INDEX IF NOT EXISTS idx_round_participants_round_joined
-ON round_participants(round_id, joined_at);
-
 -- users (handy for roster rendering)
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_team_role ON users(team_id, role);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
 -- batches
 CREATE INDEX IF NOT EXISTS idx_batches_round_team_submitted
@@ -46,8 +40,6 @@ DROP INDEX IF EXISTS idx_batches_qc_queue;
 DROP INDEX IF EXISTS idx_batches_round_team_submitted;
 DROP INDEX IF EXISTS idx_users_team_role;
 DROP INDEX IF EXISTS idx_users_role;
-DROP INDEX IF EXISTS idx_round_participants_round_joined;
-DROP INDEX IF EXISTS idx_round_participants_round_status;
 DROP INDEX IF EXISTS idx_rounds_status;
 
 COMMIT;

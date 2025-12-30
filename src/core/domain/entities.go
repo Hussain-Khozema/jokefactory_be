@@ -65,6 +65,9 @@ type User struct {
 	DisplayName string
 	Role        *Role
 	TeamID      *int64
+	Status      ParticipantStatus
+	AssignedAt  *time.Time
+	JoinedAt    time.Time
 	CreatedAt   time.Time
 }
 
@@ -78,15 +81,7 @@ type Round struct {
 	StartedAt      *time.Time
 	EndedAt        *time.Time
 	CreatedAt      time.Time
-}
-
-// RoundParticipant represents lobby assignment state.
-type RoundParticipant struct {
-	RoundID    int64
-	UserID     int64
-	Status     ParticipantStatus
-	JoinedAt   time.Time
-	AssignedAt *time.Time
+	IsPoppedActive bool
 }
 
 // TeamRoundState tracks per-team stats for a round.

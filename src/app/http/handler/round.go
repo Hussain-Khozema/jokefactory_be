@@ -20,23 +20,25 @@ func NewRoundHandler(roundService *usecase.RoundService) *RoundHandler {
 }
 
 func (h *RoundHandler) Active(c *gin.Context) {
-	round, err := h.roundService.Active(c.Request.Context())
+	rounds, err := h.roundService.List(c.Request.Context())
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	if round == nil {
-		response.OK(c, gin.H{"round": nil})
-		return
+	resp := make([]gin.H, 0, len(rounds))
+	for _, rd := range rounds {
+		resp = append(resp, gin.H{
+			"id":               rd.ID,
+			"round_number":     rd.RoundNumber,
+			"status":           rd.Status,
+			"batch_size":       rd.BatchSize,
+			"customer_budget":  rd.CustomerBudget,
+			"started_at":       rd.StartedAt,
+			"ended_at":         rd.EndedAt,
+			"is_popped_active": rd.IsPoppedActive,
+		})
 	}
-	response.OK(c, gin.H{"round": gin.H{
-		"id":             round.ID,
-		"round_number":   round.RoundNumber,
-		"status":         round.Status,
-		"batch_size":     round.BatchSize,
-		"customer_budget": round.CustomerBudget,
-		"started_at":     round.StartedAt,
-	}})
+	response.OK(c, gin.H{"rounds": resp})
 }
 
 func (h *RoundHandler) TeamSummary(c *gin.Context) {

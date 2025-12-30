@@ -23,6 +23,11 @@ func (s *RoundService) Active(ctx context.Context) (*domain.Round, error) {
 	return s.repo.GetActiveRound(ctx)
 }
 
+// List returns all rounds.
+func (s *RoundService) List(ctx context.Context) ([]domain.Round, error) {
+	return s.repo.ListRounds(ctx)
+}
+
 // TeamSummary returns stats for a team in a round.
 func (s *RoundService) TeamSummary(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
 	return s.repo.GetTeamSummary(ctx, roundID, teamID)

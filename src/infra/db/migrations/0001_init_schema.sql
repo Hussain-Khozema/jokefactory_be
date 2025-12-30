@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL,
   role         user_role NULL,
   team_id      BIGINT NULL REFERENCES teams(id) ON DELETE SET NULL,
+  status       participant_status NOT NULL DEFAULT 'WAITING',
+  assigned_at  TIMESTAMPTZ NULL,
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -64,6 +67,7 @@ CREATE TABLE IF NOT EXISTS rounds (
   status           round_status NOT NULL DEFAULT 'CONFIGURED',
   customer_budget  INT NOT NULL DEFAULT 10 CHECK (customer_budget >= 0),
   batch_size       INT NOT NULL DEFAULT 5 CHECK (batch_size >= 1),
+  is_popped_active BOOLEAN NOT NULL DEFAULT false,
   started_at       TIMESTAMPTZ NULL,
   ended_at         TIMESTAMPTZ NULL,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -77,15 +81,6 @@ WHERE status = 'ACTIVE';
 -- =========================
 -- round_participants (v2 waiting room)
 -- =========================
-CREATE TABLE IF NOT EXISTS round_participants (
-  round_id     BIGINT NOT NULL REFERENCES rounds(round_id) ON DELETE CASCADE,
-  user_id      BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-  status       participant_status NOT NULL DEFAULT 'WAITING',
-  joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  assigned_at  TIMESTAMPTZ NULL,
-  PRIMARY KEY (round_id, user_id)
-);
-
 -- =========================
 -- team_rounds_state
 -- =========================
@@ -189,7 +184,6 @@ DROP TABLE IF EXISTS joke_ratings;
 DROP TABLE IF EXISTS jokes;
 DROP TABLE IF EXISTS batches;
 DROP TABLE IF EXISTS team_rounds_state;
-DROP TABLE IF EXISTS round_participants;
 DROP TABLE IF EXISTS rounds;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS teams;

@@ -155,6 +155,7 @@ func (s *Server) setupRoutes() {
 		instructor.DELETE("/instructor/rounds/:round_id/users/:user_id", s.instructorHandler.DeleteUser)
 		instructor.POST("/instructor/rounds/:round_id/start", s.instructorHandler.StartRound)
 		instructor.POST("/instructor/rounds/:round_id/end", s.instructorHandler.EndRound)
+		instructor.POST("/instructor/rounds/:round_id/popups", s.instructorHandler.SetPopupState)
 		instructor.GET("/instructor/rounds/:round_id/stats", s.instructorHandler.Stats)
 	}
 

@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"jokefactory/src/core/domain"
@@ -19,35 +18,15 @@ func NewSessionService(repo ports.GameRepository, log *slog.Logger) *SessionServ
 	return &SessionService{repo: repo, log: log}
 }
 
-const (
-	placeholderCustomerBudget = 0
-	placeholderBatchSize      = 1
-)
-
 type SessionJoinResult struct {
-	User        *domain.User
-	Round       *domain.Round
-	Participant *domain.RoundParticipant
+	User *domain.User
 }
 
 // Join registers a user into the latest round as waiting.
 func (s *SessionService) Join(ctx context.Context, displayName string) (*SessionJoinResult, error) {
-	round, err := s.repo.GetLatestRound(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if round == nil {
-		// Auto-create a new CONFIGURED round if none exist yet.
-		roundID := int64(1)
-		round, err = s.repo.InsertRoundConfig(ctx, roundID, placeholderCustomerBudget, placeholderBatchSize)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// Idempotent "login": reuse existing user if the display name already exists.
 	var user *domain.User
-	user, err = s.repo.GetUserByDisplayName(ctx, displayName)
+	user, err := s.repo.GetUserByDisplayName(ctx, displayName)
 	if err != nil {
 		if domain.IsNotFound(err) {
 			user, err = s.repo.CreateUser(ctx, displayName)
@@ -66,22 +45,23 @@ func (s *SessionService) Join(ctx context.Context, displayName string) (*Session
 		}
 	}
 
-	participant, err := s.repo.EnsureParticipant(ctx, round.ID, user.ID)
-	if err != nil {
-		return nil, err
+	// Preserve existing status; only set to WAITING for brand-new users lacking a status.
+	if user.Status == "" {
+		if err := s.repo.UpdateUserStatus(ctx, user.ID, domain.ParticipantWaiting); err != nil {
+			s.log.Error("join: update user status failed", "user_id", user.ID, "error", err)
+			return nil, err
+		}
+		// Refresh status in the returned struct
+		user.Status = domain.ParticipantWaiting
 	}
 
 	return &SessionJoinResult{
-		User:        user,
-		Round:       round,
-		Participant: participant,
+		User: user,
 	}, nil
 }
 
 type SessionMeResult struct {
-	User        *domain.User
-	Round       *domain.Round
-	Participant *domain.RoundParticipant
+	User *domain.User
 }
 
 // Me returns session info for a user.
@@ -90,28 +70,8 @@ func (s *SessionService) Me(ctx context.Context, userID int64) (*SessionMeResult
 	if err != nil {
 		return nil, err
 	}
-	round, err := s.repo.GetLatestRound(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if round == nil {
-		return nil, domain.NewNotFoundError("round")
-	}
-
-	var participant *domain.RoundParticipant
-	// Instructors are not in round_participants; allow them through.
-	if user.Role != nil && *user.Role == domain.RoleInstructor {
-		participant = nil
-	} else {
-		participant, err = s.repo.GetParticipant(ctx, round.ID, userID)
-		if err != nil {
-			return nil, domain.NewNotFoundError(fmt.Sprintf("participant in round %d", round.ID))
-		}
-	}
 
 	return &SessionMeResult{
-		User:        user,
-		Round:       round,
-		Participant: participant,
+		User: user,
 	}, nil
 }

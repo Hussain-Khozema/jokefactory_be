@@ -170,15 +170,13 @@ type GameRepository interface {
 	CreateUser(ctx context.Context, displayName string) (*domain.User, error)
 	GetUserByDisplayName(ctx context.Context, displayName string) (*domain.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domain.User, error)
-	EnsureParticipant(ctx context.Context, roundID, userID int64) (*domain.RoundParticipant, error)
-	GetParticipant(ctx context.Context, roundID, userID int64) (*domain.RoundParticipant, error)
 	UpdateUserAssignment(ctx context.Context, userID int64, role *domain.Role, teamID *int64) error
-	UpdateParticipantStatus(ctx context.Context, roundID, userID int64, status domain.ParticipantStatus) error
-	MarkParticipantAssigned(ctx context.Context, roundID, userID int64) error
-	ListParticipantsByStatus(ctx context.Context, roundID int64, status domain.ParticipantStatus) ([]domain.User, error)
+	UpdateUserStatus(ctx context.Context, userID int64, status domain.ParticipantStatus) error
+	MarkUserAssigned(ctx context.Context, userID int64) error
+	ListUsersByStatus(ctx context.Context, status domain.ParticipantStatus) ([]domain.User, error)
 	ListTeamMembers(ctx context.Context, teamID int64) ([]TeamMember, error)
-	ListCustomers(ctx context.Context, roundID int64) ([]LobbyCustomer, error)
-	DeleteUserFromRound(ctx context.Context, roundID, userID int64) error
+	ListCustomers(ctx context.Context) ([]LobbyCustomer, error)
+	DeleteUser(ctx context.Context, userID int64) error
 
 	// Teams
 	EnsureTeamCount(ctx context.Context, teamCount int) ([]domain.Team, error)
@@ -188,10 +186,12 @@ type GameRepository interface {
 	GetActiveRound(ctx context.Context) (*domain.Round, error)
 	GetRoundByID(ctx context.Context, roundID int64) (*domain.Round, error)
 	GetLatestRound(ctx context.Context) (*domain.Round, error)
+	ListRounds(ctx context.Context) ([]domain.Round, error)
 	UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error)
 	InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error)
 	StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error)
 	EndRound(ctx context.Context, roundID int64) (*domain.Round, error)
+	SetRoundPopupState(ctx context.Context, roundID int64, isActive bool) (*domain.Round, error)
 
 	// Team round state
 	EnsureTeamRoundState(ctx context.Context, roundID, teamID int64) error

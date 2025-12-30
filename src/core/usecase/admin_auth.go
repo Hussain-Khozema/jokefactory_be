@@ -58,10 +58,18 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 	if err != nil {
 		return nil, err
 	}
-	if round == nil {
-		roundID := int64(1)
-		round, err = s.repo.InsertRoundConfig(ctx, roundID, defaultInstructorCustomerBudget, defaultInstructorBatchSize)
-		if err != nil {
+	if round == nil || round.RoundNumber < 2 {
+		// Ensure round 1 exists
+		if round == nil {
+			roundID := int64(1)
+			r1, err := s.repo.InsertRoundConfig(ctx, roundID, defaultInstructorCustomerBudget, defaultInstructorBatchSize)
+			if err != nil {
+				return nil, err
+			}
+			round = r1 // keep round 1 in the response for compatibility
+		}
+		// Ensure round 2 exists
+		if _, err := s.repo.InsertRoundConfig(ctx, int64(2), defaultInstructorCustomerBudget, defaultInstructorBatchSize); err != nil {
 			return nil, err
 		}
 	}
@@ -74,5 +82,9 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 
 // ResetGame clears all game data (guarded by upstream instructor auth).
 func (s *AdminAuthService) ResetGame(ctx context.Context) error {
-	return s.repo.ResetGame(ctx)
+	if err := s.repo.ResetGame(ctx); err != nil {
+		s.log.Error("admin reset failed", "error", err)
+		return err
+	}
+	return nil
 }
