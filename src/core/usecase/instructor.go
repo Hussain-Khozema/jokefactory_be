@@ -22,6 +22,11 @@ func (s *InstructorService) Lobby(ctx context.Context, roundID int64) (*ports.Lo
 	return s.repo.GetLobby(ctx, roundID)
 }
 
+// GetRound returns a round by id.
+func (s *InstructorService) GetRound(ctx context.Context, roundID int64) (*domain.Round, error) {
+	return s.repo.GetRoundByID(ctx, roundID)
+}
+
 func (s *InstructorService) InsertConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error) {
 	return s.repo.InsertRoundConfig(ctx, roundID, customerBudget, batchSize)
 }

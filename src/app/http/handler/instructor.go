@@ -114,7 +114,23 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 		response.BadRequest(c, "invalid payload", middleware.GetRequestID(c))
 		return
 	}
-	round, err := h.instructorService.StartRoundWithConfig(c.Request.Context(), roundID, req.CustomerBudget, req.BatchSize)
+	batchSize := 0
+	switch {
+	case req.BatchSize != nil:
+		batchSize = *req.BatchSize
+	case roundID == 2:
+		existingRound, err := h.instructorService.GetRound(c.Request.Context(), roundID)
+		if err != nil {
+			response.FromDomainError(c, err, middleware.GetRequestID(c))
+			return
+		}
+		batchSize = existingRound.BatchSize
+	default:
+		response.BadRequest(c, "batch_size is required for this round", middleware.GetRequestID(c))
+		return
+	}
+
+	round, err := h.instructorService.StartRoundWithConfig(c.Request.Context(), roundID, req.CustomerBudget, batchSize)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return

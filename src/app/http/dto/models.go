@@ -40,6 +40,6 @@ type PatchUserRequest struct {
 // ConfigRequest updates round configuration.
 type ConfigRequest struct {
 	CustomerBudget int `json:"customer_budget" binding:"required"`
-	BatchSize      int `json:"batch_size" binding:"required"`
+	BatchSize      *int `json:"batch_size"`
 }
 
