@@ -1171,7 +1171,14 @@ func (r *PostgresRepository) GetLobby(ctx context.Context, roundID int64) (*port
 
 func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) ([]ports.TeamStats, error) {
 	const q = `
-		SELECT rank, team_id, team_name, points_earned, total_sales, batches_rated, avg_score_overall, accepted_jokes
+		WITH joke_counts AS (
+			SELECT b.team_id, COUNT(j.joke_id) AS total_jokes
+			FROM batches b
+			LEFT JOIN jokes j ON j.batch_id = b.batch_id
+			WHERE b.round_id = $1
+			GROUP BY b.team_id
+		)
+		SELECT rank, team_id, team_name, points_earned, total_sales, accepted_jokes, total_jokes
 		FROM (
 			SELECT
 				DENSE_RANK() OVER (ORDER BY trs.points_earned DESC) as rank,
@@ -1179,12 +1186,10 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 				t.name AS team_name,
 				trs.points_earned,
 				COALESCE(sales.total_sales, 0) AS total_sales,
-				trs.batches_rated,
-				COALESCE(avg(b.avg_score), 0) AS avg_score_overall,
-				trs.accepted_jokes
+				trs.accepted_jokes,
+				COALESCE(jc.total_jokes, 0) AS total_jokes
 			FROM team_rounds_state trs
 			JOIN teams t ON t.id = trs.team_id
-			LEFT JOIN batches b ON b.round_id = trs.round_id AND b.team_id = trs.team_id AND b.status = 'RATED'
 			LEFT JOIN (
 				SELECT pj.team_id, COUNT(*) AS total_sales
 				FROM purchases p
@@ -1192,8 +1197,9 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 				WHERE p.round_id = $1
 				GROUP BY pj.team_id
 			) sales ON sales.team_id = trs.team_id
+			LEFT JOIN joke_counts jc ON jc.team_id = trs.team_id
 			WHERE trs.round_id = $1
-			GROUP BY t.id, t.name, trs.points_earned, sales.total_sales, trs.batches_rated, trs.accepted_jokes
+			GROUP BY t.id, t.name, trs.points_earned, sales.total_sales, trs.accepted_jokes, jc.total_jokes
 		) ranked
 		ORDER BY rank, team_id
 	`
@@ -1206,7 +1212,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 	var stats []ports.TeamStats
 	for rows.Next() {
 		var s ports.TeamStats
-		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.Points, &s.TotalSales, &s.BatchesRated, &s.AvgScoreOverall, &s.AcceptedJokes); err != nil {
+		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.Points, &s.TotalSales, &s.AcceptedJokes, &s.TotalJokes); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)
@@ -1227,26 +1233,28 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 		Leaderboard: leaderboard,
 	}
 
-	// Cumulative sales over time
+	// Sales over time (cumulative points) per team
 	const salesQ = `
 		WITH purchases_cte AS (
 			SELECT p.purchase_id,
 			       p.created_at,
 			       pj.team_id,
 			       t.name AS team_name,
-			       ROW_NUMBER() OVER (ORDER BY p.created_at, p.purchase_id) AS idx
+			       ROW_NUMBER() OVER (ORDER BY p.created_at, p.purchase_id) AS event_idx,
+			       ROW_NUMBER() OVER (PARTITION BY pj.team_id ORDER BY p.created_at, p.purchase_id) AS team_idx
 			FROM purchases p
 			JOIN published_jokes pj ON pj.joke_id = p.joke_id AND pj.round_id = p.round_id
 			JOIN teams t ON t.id = pj.team_id
 			WHERE p.round_id = $1
 		)
-		SELECT idx,
+		SELECT event_idx,
+		       team_idx,
 		       created_at,
 		       team_id,
 		       team_name,
-		       SUM(1) OVER (ORDER BY idx ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS total_sales
+		       team_idx AS cumulative_points
 		FROM purchases_cte
-		ORDER BY idx
+		ORDER BY event_idx
 	`
 	rows, err := r.pool.Query(ctx, salesQ, roundID)
 	if err != nil {
@@ -1255,156 +1263,89 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var pnt ports.CumulativeSalePoint
-		if err := rows.Scan(&pnt.EventIndex, &pnt.Timestamp, &pnt.TeamID, &pnt.TeamName, &pnt.TotalSales); err != nil {
+		var pnt ports.SalesPoint
+		if err := rows.Scan(&pnt.EventIndex, &pnt.TeamEventIndex, &pnt.Timestamp, &pnt.TeamID, &pnt.TeamName, &pnt.CumulativePoints); err != nil {
 			return nil, err
 		}
-		result.CumulativeSales = append(result.CumulativeSales, pnt)
+		result.SalesOverTime = append(result.SalesOverTime, pnt)
 	}
 
-	// Batch quality by size + learning curve (batch order)
-	const batchQ = `
-		WITH batch_sizes AS (
-			SELECT b.batch_id, b.team_id, COUNT(j.joke_id) AS batch_size
-			FROM batches b
-			LEFT JOIN jokes j ON j.batch_id = b.batch_id
-			WHERE b.round_id = $1 AND b.status = 'RATED'
-			GROUP BY b.batch_id, b.team_id
-		)
-		SELECT b.batch_id,
+	// Batch sequence vs quality (learning over time) for the given round
+	const sequenceQ = `
+		SELECT b.round_id,
+		       r.round_number,
 		       b.team_id,
 		       t.name,
-		       b.submitted_at,
-		       COALESCE(b.avg_score, 0) AS avg_score,
-		       COALESCE(bs.batch_size, 0) AS batch_size,
-		       ROW_NUMBER() OVER (PARTITION BY b.team_id ORDER BY b.submitted_at, b.batch_id) AS batch_order
+		       ROW_NUMBER() OVER (PARTITION BY b.team_id ORDER BY b.submitted_at, b.batch_id) AS batch_order,
+		       COALESCE(b.avg_score, 0) AS avg_score
 		FROM batches b
+		JOIN rounds r ON r.round_id = b.round_id
 		JOIN teams t ON t.id = b.team_id
-		LEFT JOIN batch_sizes bs ON bs.batch_id = b.batch_id
 		WHERE b.round_id = $1 AND b.status = 'RATED'
 		ORDER BY b.submitted_at, b.batch_id
 	`
-	batchRows, err := r.pool.Query(ctx, batchQ, roundID)
+	batchRows, err := r.pool.Query(ctx, sequenceQ, roundID)
 	if err != nil {
-		r.log.Error("GetRoundStatsV2: batch quality query failed", "round_id", roundID, "error", err)
+		r.log.Error("GetRoundStatsV2: sequence query failed", "round_id", roundID, "error", err)
 		return nil, err
 	}
 	defer batchRows.Close()
 	for batchRows.Next() {
 		var (
-			batchID     int64
-			teamID      int64
-			teamName    string
-			submittedAt *time.Time
-			avgScore    float64
-			batchSize   int
-			batchOrder  int
+			rid        int64
+			roundNum   int
+			teamID     int64
+			teamName   string
+			batchOrder int
+			avgScore   float64
 		)
-		if err := batchRows.Scan(&batchID, &teamID, &teamName, &submittedAt, &avgScore, &batchSize, &batchOrder); err != nil {
+		if err := batchRows.Scan(&rid, &roundNum, &teamID, &teamName, &batchOrder, &avgScore); err != nil {
 			return nil, err
 		}
-		result.BatchQualityBySize = append(result.BatchQualityBySize, ports.BatchQualityPoint{
-			BatchID:     batchID,
+		result.BatchSequenceQuality = append(result.BatchSequenceQuality, ports.BatchSequencePoint{
+			RoundID:     rid,
+			RoundNumber: roundNum,
 			TeamID:      teamID,
 			TeamName:    teamName,
-			SubmittedAt: submittedAt,
-			BatchSize:   batchSize,
+			BatchOrder:  batchOrder,
 			AvgScore:    avgScore,
 		})
-		result.LearningCurve = append(result.LearningCurve, ports.LearningCurvePoint{
-			TeamID:     teamID,
-			TeamName:   teamName,
-			BatchOrder: batchOrder,
-			AvgScore:   avgScore,
-		})
 	}
 
-	// JM output vs QC rejection rate
-	const rejectionQ = `
-		WITH jokes_cte AS (
-			SELECT b.team_id,
-			       COUNT(j.joke_id) AS total_jokes,
-			       COUNT(jr.rating) AS rated_jokes,
-			       SUM(CASE WHEN jr.rating = 5 THEN 1 ELSE 0 END) AS accepted_jokes
+	// Batch size vs average quality across rounds (for R1 vs R2 comparison on FE)
+	const sizeQ = `
+		WITH batch_sizes AS (
+			SELECT b.batch_id, COUNT(j.joke_id) AS batch_size
 			FROM batches b
 			LEFT JOIN jokes j ON j.batch_id = b.batch_id
-			LEFT JOIN joke_ratings jr ON jr.joke_id = j.joke_id
-			WHERE b.round_id = $1
-			GROUP BY b.team_id
+			WHERE b.status = 'RATED'
+			GROUP BY b.batch_id
 		)
-		SELECT t.id,
+		SELECT b.round_id,
+		       r.round_number,
+		       b.team_id,
 		       t.name,
-		       COALESCE(jc.total_jokes, 0) AS total_jokes,
-		       COALESCE(jc.rated_jokes, 0) AS rated_jokes,
-		       COALESCE(jc.accepted_jokes, 0) AS accepted_jokes,
-		       CASE
-		         WHEN COALESCE(jc.rated_jokes, 0) = 0 THEN 0
-		         ELSE 1 - (COALESCE(jc.accepted_jokes, 0)::float / COALESCE(NULLIF(jc.rated_jokes, 0), 1))
-		       END AS rejection_rate
-		FROM teams t
-		JOIN team_rounds_state trs ON trs.team_id = t.id AND trs.round_id = $1
-		LEFT JOIN jokes_cte jc ON jc.team_id = t.id
-		ORDER BY t.id
+		       COALESCE(bs.batch_size, 0) AS batch_size,
+		       COALESCE(b.avg_score, 0) AS avg_score
+		FROM batches b
+		JOIN rounds r ON r.round_id = b.round_id
+		JOIN teams t ON t.id = b.team_id
+		LEFT JOIN batch_sizes bs ON bs.batch_id = b.batch_id
+		WHERE b.status = 'RATED'
+		ORDER BY r.round_number, b.batch_id
 	`
-	rejRows, err := r.pool.Query(ctx, rejectionQ, roundID)
+	sizeRows, err := r.pool.Query(ctx, sizeQ)
 	if err != nil {
-		r.log.Error("GetRoundStatsV2: rejection query failed", "round_id", roundID, "error", err)
+		r.log.Error("GetRoundStatsV2: batch size query failed", "round_id", roundID, "error", err)
 		return nil, err
 	}
-	defer rejRows.Close()
-	for rejRows.Next() {
-		var pnt ports.OutputRejectionPoint
-		if err := rejRows.Scan(&pnt.TeamID, &pnt.TeamName, &pnt.TotalJokes, &pnt.RatedJokes, &pnt.AcceptedJokes, &pnt.RejectionRate); err != nil {
+	defer sizeRows.Close()
+	for sizeRows.Next() {
+		var pnt ports.BatchSizeQualityPoint
+		if err := sizeRows.Scan(&pnt.RoundID, &pnt.RoundNumber, &pnt.TeamID, &pnt.TeamName, &pnt.BatchSize, &pnt.AvgScore); err != nil {
 			return nil, err
 		}
-		result.OutputVsRejection = append(result.OutputVsRejection, pnt)
-	}
-
-	// Revenue vs acceptance
-	const revenueQ = `
-		WITH sales AS (
-			SELECT pj.team_id, COUNT(p.purchase_id) AS total_sales
-			FROM published_jokes pj
-			LEFT JOIN purchases p ON p.joke_id = pj.joke_id AND p.round_id = pj.round_id
-			WHERE pj.round_id = $1
-			GROUP BY pj.team_id
-		),
-		ratings AS (
-			SELECT b.team_id,
-			       COUNT(jr.rating) AS rated_jokes,
-			       SUM(CASE WHEN jr.rating = 5 THEN 1 ELSE 0 END) AS accepted_jokes
-			FROM batches b
-			LEFT JOIN jokes j ON j.batch_id = b.batch_id
-			LEFT JOIN joke_ratings jr ON jr.joke_id = j.joke_id
-			WHERE b.round_id = $1
-			GROUP BY b.team_id
-		)
-		SELECT t.id,
-		       t.name,
-		       COALESCE(s.total_sales, 0) AS total_sales,
-		       COALESCE(r.accepted_jokes, 0) AS accepted_jokes,
-		       CASE
-		         WHEN COALESCE(r.rated_jokes, 0) = 0 THEN 0
-		         ELSE COALESCE(r.accepted_jokes, 0)::float / COALESCE(NULLIF(r.rated_jokes, 0), 1)
-		       END AS acceptance_rate
-		FROM teams t
-		JOIN team_rounds_state trs ON trs.team_id = t.id AND trs.round_id = $1
-		LEFT JOIN sales s ON s.team_id = t.id
-		LEFT JOIN ratings r ON r.team_id = t.id
-		ORDER BY t.id
-	`
-	revRows, err := r.pool.Query(ctx, revenueQ, roundID)
-	if err != nil {
-		r.log.Error("GetRoundStatsV2: revenue query failed", "round_id", roundID, "error", err)
-		return nil, err
-	}
-	defer revRows.Close()
-	for revRows.Next() {
-		var pnt ports.RevenueAcceptancePoint
-		if err := revRows.Scan(&pnt.TeamID, &pnt.TeamName, &pnt.TotalSales, &pnt.AcceptedJokes, &pnt.AcceptanceRate); err != nil {
-			return nil, err
-		}
-		result.RevenueVsAcceptance = append(result.RevenueVsAcceptance, pnt)
+		result.BatchSizeQuality = append(result.BatchSizeQuality, pnt)
 	}
 
 	return result, nil

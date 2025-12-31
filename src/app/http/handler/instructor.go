@@ -197,13 +197,11 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{
-		"round_id":              stats.RoundID,
-		"leaderboard":           stats.Leaderboard,
-		"cumulative_sales":      stats.CumulativeSales,
-		"batch_quality_by_size": stats.BatchQualityBySize,
-		"learning_curve":        stats.LearningCurve,
-		"output_vs_rejection":   stats.OutputVsRejection,
-		"revenue_vs_acceptance": stats.RevenueVsAcceptance,
+		"round_id":                stats.RoundID,
+		"leaderboard":             stats.Leaderboard,
+		"sales_over_time":         stats.SalesOverTime,
+		"batch_sequence_quality":  stats.BatchSequenceQuality,
+		"batch_size_quality":      stats.BatchSizeQuality,
 	})
 }
 

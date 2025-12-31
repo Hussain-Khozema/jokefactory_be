@@ -27,11 +27,16 @@ func (h *RoundHandler) Active(c *gin.Context) {
 	}
 	resp := make([]gin.H, 0, len(rounds))
 	for _, rd := range rounds {
+		maxBatchSize := rd.BatchSize
+		if rd.RoundNumber == 2 {
+			maxBatchSize = 10
+		}
 		resp = append(resp, gin.H{
 			"id":               rd.ID,
 			"round_number":     rd.RoundNumber,
 			"status":           rd.Status,
 			"batch_size":       rd.BatchSize,
+			"max_batch_size":   maxBatchSize,
 			"customer_budget":  rd.CustomerBudget,
 			"started_at":       rd.StartedAt,
 			"ended_at":         rd.EndedAt,
