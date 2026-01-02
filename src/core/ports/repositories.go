@@ -95,22 +95,23 @@ type TeamSummary struct {
 
 // TeamStats is used for instructor round stats.
 type TeamStats struct {
-	Rank            int
-	Team            domain.Team
-	Points          int
-	TotalSales      int
-	AcceptedJokes   int
-	TotalJokes      int
+	Rank          int         `json:"rank"`
+	Team          domain.Team `json:"team"`
+	Points        int         `json:"points"`
+	BatchesRated  int         `json:"batches_rated"`
+	TotalSales    int         `json:"total_sales"`
+	AcceptedJokes int         `json:"accepted_jokes"`
+	TotalJokes    int         `json:"total_jokes"`
 }
 
 // SalesPoint represents cumulative points (sales) growth over time per team.
 type SalesPoint struct {
-	EventIndex        int       `json:"event_index"`
-	TeamEventIndex    int       `json:"team_event_index"`
-	Timestamp         time.Time `json:"timestamp"`
-	TeamID            int64     `json:"team_id"`
-	TeamName          string    `json:"team_name"`
-	CumulativePoints  int       `json:"cumulative_points"`
+	EventIndex       int       `json:"event_index"`
+	TeamEventIndex   int       `json:"team_event_index"`
+	Timestamp        time.Time `json:"timestamp"`
+	TeamID           int64     `json:"team_id"`
+	TeamName         string    `json:"team_name"`
+	CumulativePoints int       `json:"cumulative_points"`
 }
 
 // BatchSequencePoint shows average score by batch submission order for a team.
@@ -135,11 +136,11 @@ type BatchSizeQualityPoint struct {
 
 // RoundStats aggregates leaderboard plus chart data for instructor dashboard.
 type RoundStats struct {
-	RoundID               int64                     `json:"round_id"`
-	Leaderboard           []TeamStats               `json:"leaderboard"`
-	SalesOverTime         []SalesPoint              `json:"sales_over_time"`
-	BatchSequenceQuality  []BatchSequencePoint      `json:"batch_sequence_quality"`
-	BatchSizeQuality      []BatchSizeQualityPoint   `json:"batch_size_quality"`
+	RoundID              int64                   `json:"round_id"`
+	Leaderboard          []TeamStats             `json:"leaderboard"`
+	SalesOverTime        []SalesPoint            `json:"sales_over_time"`
+	BatchSequenceQuality []BatchSequencePoint    `json:"batch_sequence_quality"`
+	BatchSizeQuality     []BatchSizeQualityPoint `json:"batch_size_quality"`
 }
 
 // GameRepository is a composite repository covering all domain operations.

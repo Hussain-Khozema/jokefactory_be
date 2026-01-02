@@ -54,9 +54,9 @@ const (
 
 // Team represents a team.
 type Team struct {
-	ID        int64
-	Name      string
-	CreatedAt time.Time
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // User represents a player.
@@ -86,31 +86,31 @@ type Round struct {
 
 // TeamRoundState tracks per-team stats for a round.
 type TeamRoundState struct {
-	RoundID       int64
-	TeamID        int64
-	PointsEarned  int
+	RoundID        int64
+	TeamID         int64
+	PointsEarned   int
 	BatchesCreated int
-	BatchesRated  int
-	AcceptedJokes int
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	BatchesRated   int
+	AcceptedJokes  int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // Batch represents a submission from a team.
 type Batch struct {
-	ID           int64
-	RoundID      int64
-	TeamID       int64
-	Status       BatchStatus
-	SubmittedAt  *time.Time
-	RatedAt      *time.Time
-	AvgScore     *float64
-	PassesCount  *int
-	Feedback     *string
-	LockedAt     *time.Time
-	CreatedAt    time.Time
-	TagSummary   []TagCount
-	Jokes        []Joke
+	ID          int64
+	RoundID     int64
+	TeamID      int64
+	Status      BatchStatus
+	SubmittedAt *time.Time
+	RatedAt     *time.Time
+	AvgScore    *float64
+	PassesCount *int
+	Feedback    *string
+	LockedAt    *time.Time
+	CreatedAt   time.Time
+	TagSummary  []TagCount
+	Jokes       []Joke
 }
 
 // Joke represents a joke in a batch.
@@ -138,9 +138,9 @@ type TagCount struct {
 
 // PublishedJoke represents a joke published to market.
 type PublishedJoke struct {
-	JokeID   int64
-	RoundID  int64
-	TeamID   int64
+	JokeID    int64
+	RoundID   int64
+	TeamID    int64
 	CreatedAt time.Time
 }
 
@@ -162,4 +162,3 @@ type Purchase struct {
 	JokeID         int64
 	CreatedAt      time.Time
 }
-

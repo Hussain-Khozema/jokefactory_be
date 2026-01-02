@@ -1178,13 +1178,14 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			WHERE b.round_id = $1
 			GROUP BY b.team_id
 		)
-		SELECT rank, team_id, team_name, points_earned, total_sales, accepted_jokes, total_jokes
+		SELECT rank, team_id, team_name, points_earned, batches_rated, total_sales, accepted_jokes, total_jokes
 		FROM (
 			SELECT
 				DENSE_RANK() OVER (ORDER BY trs.points_earned DESC) as rank,
 				t.id AS team_id,
 				t.name AS team_name,
 				trs.points_earned,
+				trs.batches_rated,
 				COALESCE(sales.total_sales, 0) AS total_sales,
 				trs.accepted_jokes,
 				COALESCE(jc.total_jokes, 0) AS total_jokes
@@ -1199,7 +1200,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			) sales ON sales.team_id = trs.team_id
 			LEFT JOIN joke_counts jc ON jc.team_id = trs.team_id
 			WHERE trs.round_id = $1
-			GROUP BY t.id, t.name, trs.points_earned, sales.total_sales, trs.accepted_jokes, jc.total_jokes
+			GROUP BY t.id, t.name, trs.points_earned, trs.batches_rated, sales.total_sales, trs.accepted_jokes, jc.total_jokes
 		) ranked
 		ORDER BY rank, team_id
 	`
@@ -1212,7 +1213,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 	var stats []ports.TeamStats
 	for rows.Next() {
 		var s ports.TeamStats
-		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.Points, &s.TotalSales, &s.AcceptedJokes, &s.TotalJokes); err != nil {
+		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.Points, &s.BatchesRated, &s.TotalSales, &s.AcceptedJokes, &s.TotalJokes); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)
