@@ -95,13 +95,13 @@ type TeamSummary struct {
 
 // TeamStats is used for instructor round stats.
 type TeamStats struct {
-	Rank          int         `json:"rank"`
-	Team          domain.Team `json:"team"`
-	Points        int         `json:"points"`
-	BatchesRated  int         `json:"batches_rated"`
-	TotalSales    int         `json:"total_sales"`
-	AcceptedJokes int         `json:"accepted_jokes"`
-	TotalJokes    int         `json:"total_jokes"`
+	Rank            int         `json:"rank"`
+	Team            domain.Team `json:"team"`
+	BatchesRated    int         `json:"batches_rated"`
+	TotalSales      int         `json:"total_sales"`
+	AcceptedJokes   int         `json:"accepted_jokes"`
+	AvgScoreOverall float64     `json:"avg_score_overall"`
+	TotalJokes      int         `json:"total_jokes"`
 }
 
 // SalesPoint represents cumulative points (sales) growth over time per team.
