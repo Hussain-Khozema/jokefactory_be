@@ -165,7 +165,12 @@ func (h *InstructorHandler) SetPopupState(c *gin.Context) {
 		return
 	}
 
-	round, err := h.instructorService.SetPopupState(c.Request.Context(), roundID, req.IsPoppedActive)
+	if req.IsPoppedActive == nil {
+		response.BadRequest(c, "is_popped_active is required", middleware.GetRequestID(c))
+		return
+	}
+
+	round, err := h.instructorService.SetPopupState(c.Request.Context(), roundID, *req.IsPoppedActive)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
