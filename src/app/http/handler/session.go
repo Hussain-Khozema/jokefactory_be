@@ -75,6 +75,15 @@ func (h *SessionHandler) Me(c *gin.Context) {
 		"assigned_at": res.User.AssignedAt,
 	}
 
+	teammates := make([]gin.H, 0, len(res.Teammates))
+	for _, tm := range res.Teammates {
+		teammates = append(teammates, gin.H{
+			"user_id":      tm.UserID,
+			"display_name": tm.DisplayName,
+			"role":         tm.Role,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
 			"user_id":      res.User.ID,
@@ -85,6 +94,7 @@ func (h *SessionHandler) Me(c *gin.Context) {
 			"role":    role,
 			"team_id": team,
 		},
+		"teammates": teammates,
 	})
 }
 

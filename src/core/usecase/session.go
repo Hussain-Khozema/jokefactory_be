@@ -61,7 +61,8 @@ func (s *SessionService) Join(ctx context.Context, displayName string) (*Session
 }
 
 type SessionMeResult struct {
-	User *domain.User
+	User      *domain.User
+	Teammates []ports.TeamMember
 }
 
 // Me returns session info for a user.
@@ -71,7 +72,23 @@ func (s *SessionService) Me(ctx context.Context, userID int64) (*SessionMeResult
 		return nil, err
 	}
 
+	var teammates []ports.TeamMember
+	if user.TeamID != nil {
+		members, err := s.repo.ListTeamMembers(ctx, *user.TeamID)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range members {
+			// Exclude the requesting user from their teammate list.
+			if m.UserID == user.ID {
+				continue
+			}
+			teammates = append(teammates, m)
+		}
+	}
+
 	return &SessionMeResult{
-		User: user,
+		User:      user,
+		Teammates: teammates,
 	}, nil
 }
