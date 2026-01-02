@@ -1378,18 +1378,17 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 		return err
 	}
 
+	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE role IS DISTINCT FROM 'INSTRUCTOR'`); err != nil {
+		r.log.Error("ResetGame: delete users failed", "error", err)
+		return err
+	}
+
 	if _, err := tx.Exec(ctx, `DELETE FROM teams`); err != nil {
 		r.log.Error("ResetGame: delete teams failed", "error", err)
 		return err
 	}
 	if _, err := tx.Exec(ctx, `ALTER SEQUENCE teams_id_seq RESTART WITH 1`); err != nil {
 		r.log.Error("ResetGame: reset team sequence failed", "error", err)
-		return err
-	}
-
-	// Delete all non-instructor users; keep instructors intact.
-	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE role IS DISTINCT FROM 'INSTRUCTOR'`); err != nil {
-		r.log.Error("ResetGame: delete users failed", "error", err)
 		return err
 	}
 
