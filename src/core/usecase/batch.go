@@ -43,7 +43,11 @@ func (s *BatchService) Submit(ctx context.Context, userID, roundID, teamID int64
 	if round.Status != domain.RoundActive {
 		return nil, domain.NewConflictError("round not active")
 	}
-	if len(jokes) != round.BatchSize {
+	if round.RoundNumber == 2 {
+		if len(jokes) > 10 {
+			return nil, domain.NewValidationError("jokes", "expected up to 10 jokes for round 2")
+		}
+	} else if len(jokes) != round.BatchSize {
 		return nil, domain.NewValidationError("jokes", fmt.Sprintf("expected %d jokes", round.BatchSize))
 	}
 
