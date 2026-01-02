@@ -14,8 +14,8 @@ type AdminAuthService struct {
 }
 
 const (
-	defaultInstructorCustomerBudget = 0
-	defaultInstructorBatchSize      = 1
+	defaultInstructorCustomerBudget = 10
+	defaultInstructorBatchSize      = 5
 )
 
 func NewAdminAuthService(repo ports.GameRepository, adminPassword string) *AdminAuthService {
