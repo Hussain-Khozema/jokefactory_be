@@ -87,15 +87,25 @@ func (s *InstructorService) PatchUser(ctx context.Context, roundID, userID int64
 		role = nil
 		teamID = nil
 	}
-	if role != nil && teamID == nil {
-		user, err := s.repo.GetUserByID(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
-		teamID = user.TeamID
-		// JM/QC must have a team; surface a validation error instead of letting the DB constraint panic.
-		if (*role == domain.RoleJM || *role == domain.RoleQC) && teamID == nil {
-			return nil, domain.NewValidationError("team_id", "team_id is required for JM/QC roles")
+	if role != nil {
+		switch *role {
+		case domain.RoleCustomer, domain.RoleInstructor:
+			// These roles must not have a team.
+			teamID = nil
+		case domain.RoleJM, domain.RoleQC:
+			// JM/QC must have a team; default to existing if none provided.
+			if teamID == nil {
+				user, err := s.repo.GetUserByID(ctx, userID)
+				if err != nil {
+					return nil, err
+				}
+				teamID = user.TeamID
+			}
+			if teamID == nil {
+				return nil, domain.NewValidationError("team_id", "team_id is required for JM/QC roles")
+			}
+		default:
+			// Future roles: leave team untouched.
 		}
 	}
 	if err := s.repo.UpdateUserAssignment(ctx, userID, role, teamID); err != nil {
