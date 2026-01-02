@@ -1369,12 +1369,26 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 			joke_ratings,
 			jokes,
 			batches,
-			team_rounds_state,
-			rounds
+			team_rounds_state
 		RESTART IDENTITY CASCADE
 	`
 	if _, err := tx.Exec(ctx, truncateQ); err != nil {
 		r.log.Error("ResetGame: truncate failed", "error", err)
+		return err
+	}
+
+	// Reset rounds to defaults instead of deleting them so seeded round ids remain.
+	const resetRoundsQ = `
+		UPDATE rounds
+		SET status = 'CONFIGURED',
+		    customer_budget = 0,
+		    batch_size = 1,
+		    started_at = NULL,
+		    ended_at = NULL,
+		    is_popped_active = FALSE
+	`
+	if _, err := tx.Exec(ctx, resetRoundsQ); err != nil {
+		r.log.Error("ResetGame: reset rounds failed", "error", err)
 		return err
 	}
 
