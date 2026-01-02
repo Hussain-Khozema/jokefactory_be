@@ -530,6 +530,18 @@ func (r *PostgresRepository) IncrementRatedStats(ctx context.Context, roundID, t
 	return err
 }
 
+// updateTeamPoints adjusts only points_earned without touching batches_rated.
+func (r *PostgresRepository) updateTeamPoints(ctx context.Context, roundID, teamID int64, pointsDelta int) error {
+	const q = `
+		UPDATE team_rounds_state
+		SET points_earned = points_earned + $3,
+			updated_at = now()
+		WHERE round_id = $1 AND team_id = $2
+	`
+	_, err := r.pool.Exec(ctx, q, roundID, teamID, pointsDelta)
+	return err
+}
+
 // Batches and jokes
 
 func (r *PostgresRepository) CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error) {
@@ -969,7 +981,7 @@ func (r *PostgresRepository) BuyJoke(ctx context.Context, roundID, customerID, j
 		return nil, nil, 0, err
 	}
 
-	if err := r.IncrementRatedStats(ctx, roundID, teamID, 0, 1); err != nil {
+	if err := r.updateTeamPoints(ctx, roundID, teamID, 1); err != nil {
 		return nil, nil, 0, err
 	}
 
@@ -1017,7 +1029,7 @@ func (r *PostgresRepository) ReturnJoke(ctx context.Context, roundID, customerID
 		return nil, nil, 0, err
 	}
 
-	if err := r.IncrementRatedStats(ctx, roundID, teamID, 0, -1); err != nil {
+	if err := r.updateTeamPoints(ctx, roundID, teamID, -1); err != nil {
 		return nil, nil, 0, err
 	}
 
