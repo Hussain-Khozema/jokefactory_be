@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"log/slog"
+	"math/rand"
+	"time"
 
 	"jokefactory/src/core/domain"
 	"jokefactory/src/core/ports"
@@ -41,6 +43,13 @@ func (s *InstructorService) Assign(ctx context.Context, roundID int64, customerC
 	waiting, err := s.repo.ListUsersByStatus(ctx, domain.ParticipantWaiting)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(waiting) > 1 {
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(waiting), func(i, j int) {
+			waiting[i], waiting[j] = waiting[j], waiting[i]
+		})
 	}
 
 	assignIdx := 0
