@@ -985,6 +985,10 @@ func (r *PostgresRepository) BuyJoke(ctx context.Context, roundID, customerID, j
 		return nil, nil, 0, err
 	}
 
+	if _, err := tx.Exec(ctx, `INSERT INTO purchase_events (round_id, customer_user_id, joke_id, team_id, delta) VALUES ($1, $2, $3, $4, 1)`, roundID, customerID, jokeID, teamID); err != nil {
+		return nil, nil, 0, err
+	}
+
 	budget.RemainingBudget--
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, 0, err
@@ -1030,6 +1034,10 @@ func (r *PostgresRepository) ReturnJoke(ctx context.Context, roundID, customerID
 	}
 
 	if err := r.updateTeamPoints(ctx, roundID, teamID, -1); err != nil {
+		return nil, nil, 0, err
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO purchase_events (round_id, customer_user_id, joke_id, team_id, delta) VALUES ($1, $2, $3, $4, -1)`, roundID, customerID, jokeID, teamID); err != nil {
 		return nil, nil, 0, err
 	}
 
@@ -1255,25 +1263,26 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 
 	// Sales over time (cumulative points) per team
 	const salesQ = `
-		WITH purchases_cte AS (
-			SELECT p.purchase_id,
-			       p.created_at,
-			       pj.team_id,
+		WITH events AS (
+			SELECT pe.event_id,
+			       pe.created_at,
+			       pe.team_id,
 			       t.name AS team_name,
-			       ROW_NUMBER() OVER (ORDER BY p.created_at, p.purchase_id) AS event_idx,
-			       ROW_NUMBER() OVER (PARTITION BY pj.team_id ORDER BY p.created_at, p.purchase_id) AS team_idx
-			FROM purchases p
-			JOIN published_jokes pj ON pj.joke_id = p.joke_id AND pj.round_id = p.round_id
-			JOIN teams t ON t.id = pj.team_id
-			WHERE p.round_id = $1
+			       pe.delta,
+			       ROW_NUMBER() OVER (ORDER BY pe.created_at, pe.event_id) AS event_idx,
+			       ROW_NUMBER() OVER (PARTITION BY pe.team_id ORDER BY pe.created_at, pe.event_id) AS team_idx,
+			       SUM(pe.delta) OVER (PARTITION BY pe.team_id ORDER BY pe.created_at, pe.event_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_points
+			FROM purchase_events pe
+			JOIN teams t ON t.id = pe.team_id
+			WHERE pe.round_id = $1
 		)
 		SELECT event_idx,
 		       team_idx,
 		       created_at,
 		       team_id,
 		       team_name,
-		       team_idx AS cumulative_points
-		FROM purchases_cte
+		       cumulative_points
+		FROM events
 		ORDER BY event_idx
 	`
 	rows, err := r.pool.Query(ctx, salesQ, roundID)

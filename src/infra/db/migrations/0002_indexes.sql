@@ -28,12 +28,20 @@ CREATE INDEX IF NOT EXISTS idx_published_jokes_round ON published_jokes(round_id
 CREATE INDEX IF NOT EXISTS idx_purchases_round_customer
 ON purchases(round_id, customer_user_id);
 
+-- purchase_events
+CREATE INDEX IF NOT EXISTS idx_purchase_events_round_created
+ON purchase_events(round_id, created_at, event_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_events_round_team_created
+ON purchase_events(round_id, team_id, created_at, event_id);
+
 COMMIT;
 
 -- +goose Down
 BEGIN;
 
 DROP INDEX IF EXISTS idx_purchases_round_customer;
+DROP INDEX IF EXISTS idx_purchase_events_round_team_created;
+DROP INDEX IF EXISTS idx_purchase_events_round_created;
 DROP INDEX IF EXISTS idx_published_jokes_round;
 DROP INDEX IF EXISTS idx_jokes_batch_id;
 DROP INDEX IF EXISTS idx_batches_qc_queue;

@@ -172,12 +172,26 @@ CREATE TABLE IF NOT EXISTS purchases (
   UNIQUE (round_id, customer_user_id, joke_id)
 );
 
+-- =========================
+-- purchase_events (audit log of buys/returns; keeps stats even after returns)
+-- =========================
+CREATE TABLE IF NOT EXISTS purchase_events (
+  event_id          BIGSERIAL PRIMARY KEY,
+  round_id          BIGINT NOT NULL REFERENCES rounds(round_id) ON DELETE CASCADE,
+  customer_user_id  BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  joke_id           BIGINT NOT NULL REFERENCES published_jokes(joke_id) ON DELETE CASCADE,
+  team_id           BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  delta             SMALLINT NOT NULL CHECK (delta IN (-1, 1)),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 COMMIT;
 
 -- +goose Down
 BEGIN;
 
 DROP TABLE IF EXISTS purchases;
+DROP TABLE IF EXISTS purchase_events;
 DROP TABLE IF EXISTS customer_round_budget;
 DROP TABLE IF EXISTS published_jokes;
 DROP TABLE IF EXISTS joke_ratings;
