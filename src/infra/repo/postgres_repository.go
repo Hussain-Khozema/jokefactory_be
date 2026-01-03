@@ -432,7 +432,13 @@ func (r *PostgresRepository) InsertRoundConfig(ctx context.Context, roundID int6
 }
 
 func (r *PostgresRepository) StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error) {
-	const q = `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	const updateRound = `
 		UPDATE rounds
 		SET status = 'ACTIVE',
 		    customer_budget = $2,
@@ -443,13 +449,27 @@ func (r *PostgresRepository) StartRound(ctx context.Context, roundID int64, cust
 		RETURNING round_id, round_number, status, customer_budget, batch_size, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
-	if err := r.pool.QueryRow(ctx, q, roundID, customerBudget, batchSize).Scan(
+	if err := tx.QueryRow(ctx, updateRound, roundID, customerBudget, batchSize).Scan(
 		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
 		}
+		return nil, err
+	}
+
+	// Seed team_rounds_state so leaderboard/stats work immediately for the round.
+	const ensureStates = `
+		INSERT INTO team_rounds_state (round_id, team_id)
+		SELECT $1, t.id FROM teams t
+		ON CONFLICT DO NOTHING
+	`
+	if _, err := tx.Exec(ctx, ensureStates, roundID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return &rd, nil
