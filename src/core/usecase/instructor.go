@@ -45,19 +45,26 @@ func (s *InstructorService) Assign(ctx context.Context, roundID int64, customerC
 		return nil, err
 	}
 
-	if len(waiting) > 1 {
+	assigned, err := s.repo.ListUsersByStatus(ctx, domain.ParticipantAssigned)
+	if err != nil {
+		return nil, err
+	}
+
+	participants := append(waiting, assigned...)
+
+	if len(participants) > 1 {
 		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		r.Shuffle(len(waiting), func(i, j int) {
-			waiting[i], waiting[j] = waiting[j], waiting[i]
+		r.Shuffle(len(participants), func(i, j int) {
+			participants[i], participants[j] = participants[j], participants[i]
 		})
 	}
 
 	assignIdx := 0
 	assign := func(role domain.Role, teamID *int64) error {
-		if assignIdx >= len(waiting) {
+		if assignIdx >= len(participants) {
 			return nil
 		}
-		u := waiting[assignIdx]
+		u := participants[assignIdx]
 		assignIdx++
 		if err := s.repo.UpdateUserAssignment(ctx, u.ID, &role, teamID); err != nil {
 			return err
@@ -84,6 +91,17 @@ func (s *InstructorService) Assign(ctx context.Context, roundID int64, customerC
 
 	for i := 0; i < customerCount; i++ {
 		if err := assign(domain.RoleCustomer, nil); err != nil {
+			return nil, err
+		}
+	}
+
+	// Any remaining participants should return to waiting with no assignment.
+	for ; assignIdx < len(participants); assignIdx++ {
+		u := participants[assignIdx]
+		if err := s.repo.UpdateUserAssignment(ctx, u.ID, nil, nil); err != nil {
+			return nil, err
+		}
+		if err := s.repo.UpdateUserStatus(ctx, u.ID, domain.ParticipantWaiting); err != nil {
 			return nil, err
 		}
 	}
