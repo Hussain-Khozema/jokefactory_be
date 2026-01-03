@@ -1413,6 +1413,7 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 	const truncateQ = `
 		TRUNCATE TABLE
 			purchases,
+			purchase_events,
 			customer_round_budget,
 			published_jokes,
 			joke_ratings,
