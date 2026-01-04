@@ -726,7 +726,7 @@ func (r *PostgresRepository) GetBatchWithJokes(ctx context.Context, batchID int6
 	return &ports.BatchWithJokes{Batch: b, Jokes: jokes}, nil
 }
 
-func (r *PostgresRepository) GetNextBatchForQC(ctx context.Context, roundID, qcUserID int64) (*ports.BatchWithJokes, int, error) {
+func (r *PostgresRepository) GetNextBatchForQC(ctx context.Context, roundID, qcUserID, teamID int64) (*ports.BatchWithJokes, int, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -736,13 +736,13 @@ func (r *PostgresRepository) GetNextBatchForQC(ctx context.Context, roundID, qcU
 	const nextQ = `
 		SELECT batch_id
 		FROM batches
-		WHERE round_id = $1 AND status = 'SUBMITTED' AND (locked_by_qc IS NULL OR locked_by_qc = $2)
+		WHERE round_id = $1 AND team_id = $3 AND status = 'SUBMITTED' AND (locked_by_qc IS NULL OR locked_by_qc = $2)
 		ORDER BY submitted_at ASC
 		FOR UPDATE SKIP LOCKED
 		LIMIT 1
 	`
 	var batchID int64
-	if err := tx.QueryRow(ctx, nextQ, roundID, qcUserID).Scan(&batchID); err != nil {
+	if err := tx.QueryRow(ctx, nextQ, roundID, qcUserID, teamID).Scan(&batchID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, 0, domain.NewNotFoundError("batch")
 		}
@@ -780,7 +780,7 @@ func (r *PostgresRepository) GetNextBatchForQC(ctx context.Context, roundID, qcU
 	}
 
 	var queueSize int
-	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM batches WHERE round_id = $1 AND status = 'SUBMITTED'`, roundID).Scan(&queueSize); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM batches WHERE round_id = $1 AND team_id = $2 AND status = 'SUBMITTED'`, roundID, teamID).Scan(&queueSize); err != nil {
 		return nil, 0, err
 	}
 

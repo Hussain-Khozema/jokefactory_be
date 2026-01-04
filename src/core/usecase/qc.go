@@ -33,6 +33,9 @@ func (s *QCService) Next(ctx context.Context, userID, roundID int64) (*QCQueueIt
 	if user.Role == nil || *user.Role != domain.RoleQC {
 		return nil, domain.NewForbiddenError("user must be QC")
 	}
+	if user.TeamID == nil {
+		return nil, domain.NewConflictError("qc user missing team assignment")
+	}
 
 	round, err := s.repo.GetRoundByID(ctx, roundID)
 	if err != nil {
@@ -42,7 +45,7 @@ func (s *QCService) Next(ctx context.Context, userID, roundID int64) (*QCQueueIt
 		return nil, domain.NewConflictError("round not active")
 	}
 
-	bw, size, err := s.repo.GetNextBatchForQC(ctx, roundID, userID)
+	bw, size, err := s.repo.GetNextBatchForQC(ctx, roundID, userID, *user.TeamID)
 	if err != nil {
 		return nil, err
 	}

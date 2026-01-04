@@ -184,7 +184,7 @@ type GameRepository interface {
 	CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error)
 	ListBatchesByTeam(ctx context.Context, roundID, teamID int64) ([]domain.Batch, error)
 	GetBatchWithJokes(ctx context.Context, batchID int64) (*BatchWithJokes, error)
-	GetNextBatchForQC(ctx context.Context, roundID, qcUserID int64) (*BatchWithJokes, int, error)
+	GetNextBatchForQC(ctx context.Context, roundID, qcUserID, teamID int64) (*BatchWithJokes, int, error)
 	RateBatch(ctx context.Context, batchID int64, qcUserID int64, ratings []domain.JokeRating, feedback *string) (*domain.Batch, []int64, error)
 	CountSubmittedBatches(ctx context.Context, roundID int64) (int, error)
 
