@@ -14,6 +14,8 @@ type SessionService struct {
 	log  *slog.Logger
 }
 
+const firstRoundID int64 = 1
+
 func NewSessionService(repo ports.GameRepository, log *slog.Logger) *SessionService {
 	return &SessionService{repo: repo, log: log}
 }
@@ -72,8 +74,18 @@ func (s *SessionService) Me(ctx context.Context, userID int64) (*SessionMeResult
 		return nil, err
 	}
 
+	roundOneEnded := false
+	roundOne, err := s.repo.GetRoundByID(ctx, firstRoundID)
+	if err != nil {
+		if !domain.IsNotFound(err) {
+			return nil, err
+		}
+	} else if roundOne.Status == domain.RoundEnded {
+		roundOneEnded = true
+	}
+
 	var teammates []ports.TeamMember
-	if user.TeamID != nil {
+	if roundOneEnded && user.TeamID != nil {
 		members, err := s.repo.ListTeamMembers(ctx, *user.TeamID)
 		if err != nil {
 			return nil, err
