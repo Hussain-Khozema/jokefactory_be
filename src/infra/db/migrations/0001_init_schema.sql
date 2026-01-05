@@ -62,15 +62,16 @@ ALTER TABLE users
 -- rounds
 -- =========================
 CREATE TABLE IF NOT EXISTS rounds (
-  round_id         BIGSERIAL PRIMARY KEY,
-  round_number     INT NOT NULL,
-  status           round_status NOT NULL DEFAULT 'CONFIGURED',
-  customer_budget  INT NOT NULL DEFAULT 10 CHECK (customer_budget >= 0),
-  batch_size       INT NOT NULL DEFAULT 5 CHECK (batch_size >= 1),
-  is_popped_active BOOLEAN NOT NULL DEFAULT false,
-  started_at       TIMESTAMPTZ NULL,
-  ended_at         TIMESTAMPTZ NULL,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  round_id               BIGSERIAL PRIMARY KEY,
+  round_number           INT NOT NULL,
+  status                 round_status NOT NULL DEFAULT 'CONFIGURED',
+  customer_budget        INT NOT NULL DEFAULT 10 CHECK (customer_budget >= 0),
+  batch_size             INT NOT NULL DEFAULT 5 CHECK (batch_size >= 1),
+  unsold_jokes_penalty   NUMERIC(6,2) NOT NULL DEFAULT 0,
+  is_popped_active       BOOLEAN NOT NULL DEFAULT false,
+  started_at             TIMESTAMPTZ NULL,
+  ended_at               TIMESTAMPTZ NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Optional: only one ACTIVE round at a time

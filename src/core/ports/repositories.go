@@ -31,6 +31,7 @@ type MarketItem struct {
 	JokeText     string
 	TeamID       int64
 	TeamName     string
+	TeamLabel    string
 	IsBoughtByMe bool
 }
 
@@ -85,10 +86,13 @@ type TeamSummary struct {
 	RoundID         int64
 	Rank            int
 	Points          int
+	Profit          float64
 	TotalSales      int
+	Performance     string
 	BatchesCreated  int
 	BatchesRated    int
 	AcceptedJokes   int
+	UnsoldJokes     int
 	AvgScoreOverall float64
 	UnratedBatches  int
 }
@@ -103,6 +107,7 @@ type TeamStats struct {
 	AvgScoreOverall float64     `json:"avg_score_overall"`
 	TotalJokes      int         `json:"total_jokes"`
 	UnsoldJokes     int         `json:"unsold_jokes"`
+	Profit          float64     `json:"profit"`
 }
 
 // SalesPoint represents cumulative points (sales) growth over time per team.
@@ -170,9 +175,9 @@ type GameRepository interface {
 	GetRoundByID(ctx context.Context, roundID int64) (*domain.Round, error)
 	GetLatestRound(ctx context.Context) (*domain.Round, error)
 	ListRounds(ctx context.Context) ([]domain.Round, error)
-	UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error)
-	InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error)
-	StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error)
+	UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error)
+	InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error)
+	StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error)
 	EndRound(ctx context.Context, roundID int64) (*domain.Round, error)
 	SetRoundPopupState(ctx context.Context, roundID int64, isActive bool) (*domain.Round, error)
 

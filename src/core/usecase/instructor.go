@@ -29,8 +29,8 @@ func (s *InstructorService) GetRound(ctx context.Context, roundID int64) (*domai
 	return s.repo.GetRoundByID(ctx, roundID)
 }
 
-func (s *InstructorService) InsertConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error) {
-	return s.repo.InsertRoundConfig(ctx, roundID, customerBudget, batchSize)
+func (s *InstructorService) InsertConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error) {
+	return s.repo.InsertRoundConfig(ctx, roundID, customerBudget, batchSize, unsoldJokesPenalty)
 }
 
 // Assign auto-assigns waiting participants into JM/QC/Customer roles.
@@ -151,7 +151,7 @@ func (s *InstructorService) PatchUser(ctx context.Context, roundID, userID int64
 
 func (s *InstructorService) StartRound(ctx context.Context, roundID int64) (*domain.Round, error) {
 	// Start without updating budget/batch is no longer used; see StartRoundWithConfig.
-	return s.repo.StartRound(ctx, roundID, 0, 1)
+	return s.repo.StartRound(ctx, roundID, 0, 1, 0)
 }
 
 func (s *InstructorService) EndRound(ctx context.Context, roundID int64) (*domain.Round, error) {
@@ -164,8 +164,8 @@ func (s *InstructorService) SetPopupState(ctx context.Context, roundID int64, is
 }
 
 // StartRoundWithConfig activates a round with provided configuration.
-func (s *InstructorService) StartRoundWithConfig(ctx context.Context, roundID int64, customerBudget, batchSize int) (*domain.Round, error) {
-	return s.repo.StartRound(ctx, roundID, customerBudget, batchSize)
+func (s *InstructorService) StartRoundWithConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error) {
+	return s.repo.StartRound(ctx, roundID, customerBudget, batchSize, unsoldJokesPenalty)
 }
 
 func (s *InstructorService) Stats(ctx context.Context, roundID int64) (*ports.RoundStats, error) {

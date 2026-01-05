@@ -42,7 +42,7 @@ func (h *InstructorHandler) Config(c *gin.Context) {
 		return
 	}
 	// We ignore budget/batch here; they will be provided when starting the round.
-	round, err := h.instructorService.InsertConfig(c.Request.Context(), roundID, 0, 1)
+	round, err := h.instructorService.InsertConfig(c.Request.Context(), roundID, 0, 1, 0)
 	if err != nil {
 		// Inline log to help diagnose server errors in lower layers
 		c.Error(err) // recorded in Gin context; already gets logged by middleware
@@ -130,7 +130,7 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 		return
 	}
 
-	round, err := h.instructorService.StartRoundWithConfig(c.Request.Context(), roundID, req.CustomerBudget, batchSize)
+	round, err := h.instructorService.StartRoundWithConfig(c.Request.Context(), roundID, req.CustomerBudget, batchSize, req.UnsoldJokesPenalty)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
@@ -177,14 +177,15 @@ func (h *InstructorHandler) SetPopupState(c *gin.Context) {
 	}
 
 	response.OK(c, gin.H{"round": gin.H{
-		"id":               round.ID,
-		"round_number":     round.RoundNumber,
-		"status":           round.Status,
-		"customer_budget":  round.CustomerBudget,
-		"batch_size":       round.BatchSize,
-		"started_at":       round.StartedAt,
-		"ended_at":         round.EndedAt,
-		"is_popped_active": round.IsPoppedActive,
+		"id":                   round.ID,
+		"round_number":         round.RoundNumber,
+		"status":               round.Status,
+		"customer_budget":      round.CustomerBudget,
+		"batch_size":           round.BatchSize,
+		"unsold_jokes_penalty": round.UnsoldJokesPenalty,
+		"started_at":           round.StartedAt,
+		"ended_at":             round.EndedAt,
+		"is_popped_active":     round.IsPoppedActive,
 	}})
 }
 
@@ -202,11 +203,11 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{
-		"round_id":                stats.RoundID,
-		"leaderboard":             stats.Leaderboard,
-		"sales_over_time":         stats.SalesOverTime,
-		"batch_sequence_quality":  stats.BatchSequenceQuality,
-		"batch_size_quality":      stats.BatchSizeQuality,
+		"round_id":               stats.RoundID,
+		"leaderboard":            stats.Leaderboard,
+		"sales_over_time":        stats.SalesOverTime,
+		"batch_sequence_quality": stats.BatchSequenceQuality,
+		"batch_size_quality":     stats.BatchSizeQuality,
 	})
 }
 

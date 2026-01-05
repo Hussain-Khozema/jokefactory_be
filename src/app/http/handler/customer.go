@@ -37,9 +37,9 @@ func (h *CustomerHandler) Market(c *gin.Context) {
 	var out []gin.H
 	for _, item := range items {
 		out = append(out, gin.H{
-			"joke_id":        item.JokeID,
-			"joke_text":      item.JokeText,
-			"team":           gin.H{"id": item.TeamID, "name": item.TeamName},
+			"joke_id":         item.JokeID,
+			"joke_text":       item.JokeText,
+			"team":            gin.H{"id": item.TeamID, "name": item.TeamName, "performance_label": item.TeamLabel},
 			"is_bought_by_me": item.IsBoughtByMe,
 		})
 	}
@@ -62,8 +62,8 @@ func (h *CustomerHandler) Budget(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{
-		"round_id":        budget.RoundID,
-		"starting_budget": budget.StartingBudget,
+		"round_id":         budget.RoundID,
+		"starting_budget":  budget.StartingBudget,
 		"remaining_budget": budget.RemainingBudget,
 	})
 }
@@ -94,7 +94,7 @@ func (h *CustomerHandler) Buy(c *gin.Context) {
 			"joke_id":     purchase.JokeID,
 		},
 		"budget": gin.H{
-			"starting_budget": budget.StartingBudget,
+			"starting_budget":  budget.StartingBudget,
 			"remaining_budget": budget.RemainingBudget,
 		},
 		"team_points_awarded": gin.H{
@@ -130,7 +130,7 @@ func (h *CustomerHandler) Return(c *gin.Context) {
 			"joke_id":     purchase.JokeID,
 		},
 		"budget": gin.H{
-			"starting_budget": budget.StartingBudget,
+			"starting_budget":  budget.StartingBudget,
 			"remaining_budget": budget.RemainingBudget,
 		},
 		"team_points_awarded": gin.H{
@@ -139,4 +139,3 @@ func (h *CustomerHandler) Return(c *gin.Context) {
 		},
 	})
 }
-

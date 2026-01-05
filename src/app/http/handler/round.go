@@ -32,15 +32,16 @@ func (h *RoundHandler) Active(c *gin.Context) {
 			maxBatchSize = 10
 		}
 		resp = append(resp, gin.H{
-			"id":               rd.ID,
-			"round_number":     rd.RoundNumber,
-			"status":           rd.Status,
-			"batch_size":       rd.BatchSize,
-			"max_batch_size":   maxBatchSize,
-			"customer_budget":  rd.CustomerBudget,
-			"started_at":       rd.StartedAt,
-			"ended_at":         rd.EndedAt,
-			"is_popped_active": rd.IsPoppedActive,
+			"id":                   rd.ID,
+			"round_number":         rd.RoundNumber,
+			"status":               rd.Status,
+			"batch_size":           rd.BatchSize,
+			"max_batch_size":       maxBatchSize,
+			"customer_budget":      rd.CustomerBudget,
+			"unsold_jokes_penalty": rd.UnsoldJokesPenalty,
+			"started_at":           rd.StartedAt,
+			"ended_at":             rd.EndedAt,
+			"is_popped_active":     rd.IsPoppedActive,
 		})
 	}
 	response.OK(c, gin.H{"rounds": resp})
@@ -71,7 +72,10 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 		"round_id":          summary.RoundID,
 		"rank":              summary.Rank,
 		"points":            summary.Points,
+		"profit":            summary.Profit,
 		"total_sales":       summary.TotalSales,
+		"performance_label": summary.Performance,
+		"unsold_jokes":      summary.UnsoldJokes,
 		"batches_created":   summary.BatchesCreated,
 		"batches_rated":     summary.BatchesRated,
 		"accepted_jokes":    summary.AcceptedJokes,
@@ -79,4 +83,3 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 		"unrated_batches":   summary.UnratedBatches,
 	})
 }
-

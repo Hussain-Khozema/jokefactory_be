@@ -73,15 +73,16 @@ type User struct {
 
 // Round represents a game session.
 type Round struct {
-	ID             int64
-	RoundNumber    int
-	Status         RoundStatus
-	CustomerBudget int
-	BatchSize      int
-	StartedAt      *time.Time
-	EndedAt        *time.Time
-	CreatedAt      time.Time
-	IsPoppedActive bool
+	ID                 int64
+	RoundNumber        int
+	Status             RoundStatus
+	CustomerBudget     int
+	BatchSize          int
+	UnsoldJokesPenalty float64
+	StartedAt          *time.Time
+	EndedAt            *time.Time
+	CreatedAt          time.Time
+	IsPoppedActive     bool
 }
 
 // TeamRoundState tracks per-team stats for a round.

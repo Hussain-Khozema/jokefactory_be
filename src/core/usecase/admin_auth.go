@@ -14,8 +14,9 @@ type AdminAuthService struct {
 }
 
 const (
-	defaultInstructorCustomerBudget = 10
+	defaultInstructorCustomerBudget = 20
 	defaultInstructorBatchSize      = 5
+	defaultUnsoldPenalty            = 0.0
 )
 
 func NewAdminAuthService(repo ports.GameRepository, adminPassword string) *AdminAuthService {
@@ -62,14 +63,14 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 		// Ensure round 1 exists
 		if round == nil {
 			roundID := int64(1)
-			r1, err := s.repo.InsertRoundConfig(ctx, roundID, defaultInstructorCustomerBudget, defaultInstructorBatchSize)
+			r1, err := s.repo.InsertRoundConfig(ctx, roundID, defaultInstructorCustomerBudget, defaultInstructorBatchSize, defaultUnsoldPenalty)
 			if err != nil {
 				return nil, err
 			}
 			round = r1 // keep round 1 in the response for compatibility
 		}
 		// Ensure round 2 exists
-		if _, err := s.repo.InsertRoundConfig(ctx, int64(2), defaultInstructorCustomerBudget, defaultInstructorBatchSize); err != nil {
+		if _, err := s.repo.InsertRoundConfig(ctx, int64(2), defaultInstructorCustomerBudget, defaultInstructorBatchSize, defaultUnsoldPenalty); err != nil {
 			return nil, err
 		}
 	}
