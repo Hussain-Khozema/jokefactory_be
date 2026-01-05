@@ -1223,8 +1223,15 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			FROM batches b
 			WHERE b.round_id = $1 AND b.status = 'RATED'
 			GROUP BY b.team_id
+		),
+		unsold AS (
+			SELECT pj.team_id, COUNT(*) AS unsold_jokes
+			FROM published_jokes pj
+			LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
+			WHERE pj.round_id = $1 AND p.purchase_id IS NULL
+			GROUP BY pj.team_id
 		)
-		SELECT rank, team_id, team_name, batches_rated, total_sales, accepted_jokes, total_jokes, avg_score
+		SELECT rank, team_id, team_name, batches_rated, total_sales, accepted_jokes, total_jokes, unsold_jokes, avg_score
 		FROM (
 			SELECT
 				DENSE_RANK() OVER (ORDER BY COALESCE(sales.total_sales, 0) DESC) as rank,
@@ -1234,6 +1241,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 				COALESCE(sales.total_sales, 0) AS total_sales,
 				trs.accepted_jokes,
 				COALESCE(jc.total_jokes, 0) AS total_jokes,
+				COALESCE(u.unsold_jokes, 0) AS unsold_jokes,
 				COALESCE(ra.avg_score, 0) AS avg_score
 			FROM team_rounds_state trs
 			JOIN teams t ON t.id = trs.team_id
@@ -1246,8 +1254,9 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			) sales ON sales.team_id = trs.team_id
 			LEFT JOIN joke_counts jc ON jc.team_id = trs.team_id
 			LEFT JOIN rated_avg ra ON ra.team_id = trs.team_id
+			LEFT JOIN unsold u ON u.team_id = trs.team_id
 			WHERE trs.round_id = $1
-			GROUP BY t.id, t.name, trs.batches_rated, sales.total_sales, trs.accepted_jokes, jc.total_jokes, ra.avg_score
+			GROUP BY t.id, t.name, trs.batches_rated, sales.total_sales, trs.accepted_jokes, jc.total_jokes, u.unsold_jokes, ra.avg_score
 		) ranked
 		ORDER BY rank, team_id
 	`
@@ -1260,7 +1269,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 	var stats []ports.TeamStats
 	for rows.Next() {
 		var s ports.TeamStats
-		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.BatchesRated, &s.TotalSales, &s.AcceptedJokes, &s.TotalJokes, &s.AvgScoreOverall); err != nil {
+		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.BatchesRated, &s.TotalSales, &s.AcceptedJokes, &s.TotalJokes, &s.UnsoldJokes, &s.AvgScoreOverall); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)

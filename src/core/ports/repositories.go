@@ -102,6 +102,7 @@ type TeamStats struct {
 	AcceptedJokes   int         `json:"accepted_jokes"`
 	AvgScoreOverall float64     `json:"avg_score_overall"`
 	TotalJokes      int         `json:"total_jokes"`
+	UnsoldJokes     int         `json:"unsold_jokes"`
 }
 
 // SalesPoint represents cumulative points (sales) growth over time per team.
