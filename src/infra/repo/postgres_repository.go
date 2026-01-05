@@ -942,7 +942,7 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 		JOIN teams t ON t.id = pj.team_id
 		LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id AND p.customer_user_id = $2
 		WHERE pj.round_id = $1
-		ORDER BY pj.joke_id
+		ORDER BY pj.created_at DESC, pj.joke_id DESC
 	`
 	rows, err := r.pool.Query(ctx, q, roundID, customerID)
 	if err != nil {
