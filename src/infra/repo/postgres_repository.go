@@ -1338,11 +1338,9 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
 			WHERE pj.round_id = $1 AND p.purchase_id IS NULL
 			GROUP BY pj.team_id
-		)
-		SELECT rank, team_id, team_name, batches_rated, total_sales, accepted_jokes, total_jokes, unsold_jokes, profit, avg_score
-		FROM (
+		),
+		base AS (
 			SELECT
-				DENSE_RANK() OVER (ORDER BY profit DESC) as rank,
 				t.id AS team_id,
 				t.name AS team_name,
 				trs.batches_rated,
@@ -1366,7 +1364,19 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			LEFT JOIN unsold u ON u.team_id = trs.team_id
 			WHERE trs.round_id = $1
 			GROUP BY t.id, t.name, trs.batches_rated, sales.total_sales, trs.accepted_jokes, jc.total_jokes, u.unsold_jokes, ra.avg_score
-		) ranked
+		)
+		SELECT
+			DENSE_RANK() OVER (ORDER BY profit DESC) as rank,
+			team_id,
+			team_name,
+			batches_rated,
+			total_sales,
+			accepted_jokes,
+			total_jokes,
+			unsold_jokes,
+			profit,
+			avg_score
+		FROM base
 		ORDER BY rank, team_id
 	`
 	rows, err := r.pool.Query(ctx, q, roundID)

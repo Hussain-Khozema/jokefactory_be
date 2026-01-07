@@ -19,7 +19,7 @@ func NewCustomerService(repo ports.GameRepository, log *slog.Logger) *CustomerSe
 }
 
 func (s *CustomerService) Market(ctx context.Context, userID, roundID int64) ([]ports.MarketItem, error) {
-	if err := s.ensureCustomer(ctx, userID); err != nil {
+	if err := s.ensureCustomerOrInstructor(ctx, userID); err != nil {
 		return nil, err
 	}
 	round, err := s.repo.GetRoundByID(ctx, roundID)
@@ -87,6 +87,18 @@ func (s *CustomerService) ensureCustomer(ctx context.Context, userID int64) erro
 	}
 	if user.Role == nil || *user.Role != domain.RoleCustomer {
 		return domain.NewForbiddenError("user must be customer")
+	}
+	return nil
+}
+
+// ensureCustomerOrInstructor allows customers (normal path) and instructors (for viewing/monitoring).
+func (s *CustomerService) ensureCustomerOrInstructor(ctx context.Context, userID int64) error {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user.Role == nil || (*user.Role != domain.RoleCustomer && *user.Role != domain.RoleInstructor) {
+		return domain.NewForbiddenError("user must be customer or instructor")
 	}
 	return nil
 }
