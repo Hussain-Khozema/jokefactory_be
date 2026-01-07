@@ -969,11 +969,18 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			FROM ratios
 		)
 		SELECT pj.joke_id, j.joke_text, pj.team_id, t.name, COALESCE(l.label, 'AVERAGE PERFORMING') AS label,
+			COALESCE(pc.purchase_count, 0) AS purchase_count,
 			CASE WHEN p.purchase_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_bought
 		FROM published_jokes pj
 		JOIN jokes j ON j.joke_id = pj.joke_id
 		JOIN teams t ON t.id = pj.team_id
 		LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id AND p.customer_user_id = $2
+		LEFT JOIN (
+			SELECT joke_id, COUNT(*) AS purchase_count
+			FROM purchases
+			WHERE round_id = $1
+			GROUP BY joke_id
+		) pc ON pc.joke_id = pj.joke_id
 		LEFT JOIN labeled l ON l.team_id = pj.team_id
 		WHERE pj.round_id = $1
 		ORDER BY pj.created_at DESC, pj.joke_id DESC
@@ -987,7 +994,7 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 	var items []ports.MarketItem
 	for rows.Next() {
 		var item ports.MarketItem
-		if err := rows.Scan(&item.JokeID, &item.JokeText, &item.TeamID, &item.TeamName, &item.TeamLabel, &item.IsBoughtByMe); err != nil {
+		if err := rows.Scan(&item.JokeID, &item.JokeText, &item.TeamID, &item.TeamName, &item.TeamLabel, &item.BoughtCount, &item.IsBoughtByMe); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

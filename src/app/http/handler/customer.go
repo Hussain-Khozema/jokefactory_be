@@ -40,6 +40,7 @@ func (h *CustomerHandler) Market(c *gin.Context) {
 			"joke_id":         item.JokeID,
 			"joke_text":       item.JokeText,
 			"team":            gin.H{"id": item.TeamID, "name": item.TeamName, "performance_label": item.TeamLabel},
+			"bought_count":    item.BoughtCount,
 			"is_bought_by_me": item.IsBoughtByMe,
 		})
 	}

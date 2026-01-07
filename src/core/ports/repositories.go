@@ -32,6 +32,7 @@ type MarketItem struct {
 	TeamID       int64
 	TeamName     string
 	TeamLabel    string
+	BoughtCount  int
 	IsBoughtByMe bool
 }
 
