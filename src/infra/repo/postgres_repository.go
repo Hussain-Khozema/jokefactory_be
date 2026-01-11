@@ -1008,7 +1008,7 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 
 					-- Case 4: teams in market >= 9
 					WHEN team_count >= 9 AND rnk <= 3 THEN 'HIGH PERFORMING'
-					WHEN team_count >= 9 AND rnk IN (4, 5, 6) THEN 'AVERAGE PERFORMING'
+					WHEN team_count >= 9 AND rnk IN (4, 5) THEN 'AVERAGE PERFORMING'
 					ELSE 'LOW PERFORMING'
 				END AS label
 			FROM ranked
