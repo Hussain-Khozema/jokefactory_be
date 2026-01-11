@@ -903,6 +903,93 @@ func (r *PostgresRepository) CountSubmittedBatches(ctx context.Context, roundID 
 
 // Market and budget
 
+// marketPerformanceLabelCTEs defines the exact performance labeling logic used by Market.
+// Keep this shared so all endpoints show consistent team labels.
+//
+// Notes:
+// - Uses $1 as round_id
+// - Only compares teams that actually have items in the market (published jokes)
+// - Ranks by ratio DESC, profit DESC, team_id
+const marketPerformanceLabelCTEs = `
+		cfg AS (
+			SELECT
+				COALESCE(unsold_jokes_penalty, 0)::double precision AS unsold_penalty,
+				(SELECT COUNT(*) FROM published_jokes WHERE round_id = $1) AS total_published_jokes
+			FROM rounds
+			WHERE round_id = $1
+		),
+		market_sales_counts AS (
+			SELECT pj.team_id, COUNT(*) AS total_sales
+			FROM purchases p
+			JOIN published_jokes pj ON pj.joke_id = p.joke_id
+			WHERE p.round_id = $1
+			GROUP BY pj.team_id
+		),
+		market_market_counts AS (
+			SELECT team_id, COUNT(*) AS total_market
+			FROM published_jokes
+			WHERE round_id = $1
+			GROUP BY team_id
+		),
+		market_unsold_counts AS (
+			SELECT pj.team_id, COUNT(*) AS unsold_jokes
+			FROM published_jokes pj
+			LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
+			WHERE pj.round_id = $1 AND p.purchase_id IS NULL
+			GROUP BY pj.team_id
+		),
+		market_team_base AS (
+			SELECT trs.team_id,
+			       COALESCE(trs.accepted_jokes, 0) AS accepted_jokes,
+			       COALESCE(u.unsold_jokes, 0) AS unsold_jokes,
+			       COALESCE(s.total_sales, 0) AS total_sales,
+			       COALESCE(m.total_market, 0)::double precision AS total_market,
+			       CASE
+			           WHEN COALESCE(m.total_market, 0) = 0 THEN 0
+			           ELSE COALESCE(s.total_sales, 0)::double precision / COALESCE(m.total_market, 0)
+			       END AS ratio,
+			       COALESCE(s.total_sales, 0)::double precision - COALESCE(u.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit
+			FROM team_rounds_state trs
+			LEFT JOIN market_sales_counts s ON s.team_id = trs.team_id
+			LEFT JOIN market_market_counts m ON m.team_id = trs.team_id
+			LEFT JOIN market_unsold_counts u ON u.team_id = trs.team_id
+			WHERE trs.round_id = $1 AND COALESCE(m.total_market, 0) > 0
+		),
+		market_ranked AS (
+			SELECT
+				team_id,
+				ROW_NUMBER() OVER (ORDER BY ratio DESC, profit DESC, team_id) AS rnk,
+				COUNT(*) OVER () AS team_count
+			FROM market_team_base
+		),
+		market_labeled AS (
+			SELECT
+				team_id,
+				CASE
+					-- Case 1: teams in market <= 5
+					WHEN team_count <= 5 AND rnk = 1 THEN 'HIGH PERFORMING'
+					WHEN team_count <= 5 AND rnk = 2 THEN 'AVERAGE PERFORMING'
+					WHEN team_count <= 5 THEN 'LOW PERFORMING'
+
+					-- Case 2: teams in market = 6 or 7
+					WHEN team_count IN (6, 7) AND rnk = 1 THEN 'HIGH PERFORMING'
+					WHEN team_count IN (6, 7) AND rnk IN (2, 3) THEN 'AVERAGE PERFORMING'
+					WHEN team_count IN (6, 7) THEN 'LOW PERFORMING'
+
+					-- Case 3: teams in market = 8
+					WHEN team_count = 8 AND rnk <= 2 THEN 'HIGH PERFORMING'
+					WHEN team_count = 8 AND rnk IN (3, 4) THEN 'AVERAGE PERFORMING'
+					WHEN team_count = 8 THEN 'LOW PERFORMING'
+
+					-- Case 4: teams in market >= 9
+					WHEN team_count >= 9 AND rnk <= 3 THEN 'HIGH PERFORMING'
+					WHEN team_count >= 9 AND rnk IN (4, 5) THEN 'AVERAGE PERFORMING'
+					ELSE 'LOW PERFORMING'
+				END AS performance_label
+			FROM market_ranked
+		)
+`
+
 func (r *PostgresRepository) EnsureCustomerBudget(ctx context.Context, roundID, customerID int64, starting int) (*domain.CustomerRoundBudget, error) {
 	const q = `
 		INSERT INTO customer_round_budget (round_id, customer_user_id, starting_budget, remaining_budget)
@@ -935,85 +1022,12 @@ func (r *PostgresRepository) getCustomerBudget(ctx context.Context, roundID, cus
 }
 
 func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID int64) ([]ports.MarketItem, error) {
-	const q = `
-		WITH cfg AS (
-			SELECT COALESCE(unsold_jokes_penalty, 0)::double precision AS unsold_penalty
-			FROM rounds
-			WHERE round_id = $1
-		),
-		sales_counts AS (
-			SELECT pj.team_id, COUNT(*) AS total_sales
-			FROM purchases p
-			JOIN published_jokes pj ON pj.joke_id = p.joke_id
-			WHERE p.round_id = $1
-			GROUP BY pj.team_id
-		),
-		market_counts AS (
-			SELECT team_id, COUNT(*) AS total_market
-			FROM published_jokes
-			WHERE round_id = $1
-			GROUP BY team_id
-		),
-		unsold_counts AS (
-			SELECT pj.team_id, COUNT(*) AS unsold_jokes
-			FROM published_jokes pj
-			LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
-			WHERE pj.round_id = $1 AND p.purchase_id IS NULL
-			GROUP BY pj.team_id
-		),
-		team_base AS (
-			SELECT trs.team_id,
-			       COALESCE(trs.accepted_jokes, 0) AS accepted_jokes,
-			       COALESCE(unsold.unsold_jokes, 0) AS unsold_jokes,
-			       COALESCE(sales.total_sales, 0) AS total_sales,
-			       COALESCE(market.total_market, 0)::double precision AS total_market,
-			       CASE
-			           WHEN COALESCE(market.total_market, 0) = 0 THEN 0
-			           ELSE COALESCE(sales.total_sales, 0)::double precision / COALESCE(market.total_market, 0)
-			       END AS ratio,
-			       COALESCE(sales.total_sales, 0)::double precision - COALESCE(unsold.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit
-			FROM team_rounds_state trs
-			LEFT JOIN sales_counts sales ON sales.team_id = trs.team_id
-			LEFT JOIN market_counts market ON market.team_id = trs.team_id
-			LEFT JOIN unsold_counts unsold ON unsold.team_id = trs.team_id
-			-- Only compare teams that actually have items in the market (published jokes).
-			-- Teams with 0 market items shouldn't influence the performance labels.
-			WHERE trs.round_id = $1 AND COALESCE(market.total_market, 0) > 0
-		),
-		ranked AS (
-			SELECT
-				team_id,
-				ROW_NUMBER() OVER (ORDER BY ratio DESC, profit DESC, team_id) AS rnk,
-				COUNT(*) OVER () AS team_count
-			FROM team_base
-		),
-		labeled AS (
-			SELECT
-				team_id,
-				CASE
-					-- Case 1: teams in market <= 5
-					WHEN team_count <= 5 AND rnk = 1 THEN 'HIGH PERFORMING'
-					WHEN team_count <= 5 AND rnk = 2 THEN 'AVERAGE PERFORMING'
-					WHEN team_count <= 5 THEN 'LOW PERFORMING'
-
-					-- Case 2: teams in market = 6 or 7
-					WHEN team_count IN (6, 7) AND rnk = 1 THEN 'HIGH PERFORMING'
-					WHEN team_count IN (6, 7) AND rnk IN (2, 3) THEN 'AVERAGE PERFORMING'
-					WHEN team_count IN (6, 7) THEN 'LOW PERFORMING'
-
-					-- Case 3: teams in market = 8
-					WHEN team_count = 8 AND rnk <= 2 THEN 'HIGH PERFORMING'
-					WHEN team_count = 8 AND rnk IN (3, 4) THEN 'AVERAGE PERFORMING'
-					WHEN team_count = 8 THEN 'LOW PERFORMING'
-
-					-- Case 4: teams in market >= 9
-					WHEN team_count >= 9 AND rnk <= 3 THEN 'HIGH PERFORMING'
-					WHEN team_count >= 9 AND rnk IN (4, 5) THEN 'AVERAGE PERFORMING'
-					ELSE 'LOW PERFORMING'
-				END AS label
-			FROM ranked
-		)
-		SELECT pj.joke_id, j.joke_text, pj.team_id, t.name, COALESCE(l.label, 'AVERAGE PERFORMING') AS label,
+	const q = `WITH ` + marketPerformanceLabelCTEs + `
+		SELECT pj.joke_id, j.joke_text, pj.team_id, t.name,
+			CASE
+				WHEN (SELECT total_published_jokes FROM cfg) < 10 THEN 'LOW PERFORMING'
+				ELSE COALESCE(l.performance_label, 'AVERAGE PERFORMING')
+			END AS label,
 			COALESCE(pc.purchase_count, 0) AS purchase_count,
 			CASE WHEN p.purchase_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_bought,
 			COALESCE(tb.profit, 0) AS profit,
@@ -1029,8 +1043,8 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			WHERE round_id = $1
 			GROUP BY joke_id
 		) pc ON pc.joke_id = pj.joke_id
-		LEFT JOIN labeled l ON l.team_id = pj.team_id
-		LEFT JOIN team_base tb ON tb.team_id = pj.team_id
+		LEFT JOIN market_labeled l ON l.team_id = pj.team_id
+		LEFT JOIN market_team_base tb ON tb.team_id = pj.team_id
 		WHERE pj.round_id = $1
 		ORDER BY pj.created_at DESC, pj.joke_id DESC
 	`
@@ -1183,12 +1197,7 @@ func (r *PostgresRepository) getCustomerBudgetTx(ctx context.Context, tx pgx.Tx,
 // Stats and lobby
 
 func (r *PostgresRepository) GetTeamSummary(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
-	const q = `
-		WITH cfg AS (
-			SELECT COALESCE(unsold_jokes_penalty, 0)::double precision AS unsold_penalty
-			FROM rounds
-			WHERE round_id = $1
-		),
+	const q = `WITH ` + marketPerformanceLabelCTEs + `,
 		stats AS (
 			SELECT trs.points_earned,
 			       trs.batches_created,
@@ -1240,38 +1249,14 @@ func (r *PostgresRepository) GetTeamSummary(ctx context.Context, roundID, teamID
 		ranks AS (
 			SELECT team_id, profit, DENSE_RANK() OVER (ORDER BY profit DESC) AS rnk
 			FROM profit_rank
-		),
-		ratios AS (
-			SELECT trs.team_id,
-			       CASE WHEN COALESCE(mkt.total_market, 0) = 0 THEN 0
-			            ELSE COALESCE(sales.total_sales, 0)::double precision / COALESCE(mkt.total_market, 0)
-			       END AS ratio
-			FROM team_rounds_state trs
-			LEFT JOIN (
-				SELECT team_id, COUNT(*) AS total_market
-				FROM published_jokes
-				WHERE round_id = $1
-				GROUP BY team_id
-			) mkt ON mkt.team_id = trs.team_id
-			LEFT JOIN (
-				SELECT pj.team_id, COUNT(*) AS total_sales
-				FROM purchases p
-				JOIN published_jokes pj ON pj.joke_id = p.joke_id
-				WHERE p.round_id = $1
-				GROUP BY pj.team_id
-			) sales ON sales.team_id = trs.team_id
-			WHERE trs.round_id = $1
-		),
-		labels AS (
-			SELECT team_id,
-			       CASE
-			           WHEN ROW_NUMBER() OVER (ORDER BY ratio DESC, team_id) <= 3 THEN 'HIGH PERFORMING'
-			           WHEN ROW_NUMBER() OVER (ORDER BY ratio ASC, team_id) <= 3 THEN 'LOW PERFORMING'
-			           ELSE 'AVERAGE PERFORMING'
-			       END AS performance_label
-			FROM ratios
 		)
-		SELECT t.id, t.name, $1 as round_id, r.rnk, sa.total_sales, COALESCE(r.profit, 0), COALESCE(l.performance_label, 'AVERAGE PERFORMING'),
+		SELECT t.id, t.name, $1 as round_id, r.rnk, sa.total_sales, COALESCE(r.profit, 0),
+			CASE
+				WHEN (SELECT total_published_jokes FROM cfg) < 10 THEN 'LOW PERFORMING'
+				-- If this team has nothing in the market, label should be LOW (once market has enough items).
+				WHEN COALESCE(mmc.total_market, 0) = 0 THEN 'LOW PERFORMING'
+				ELSE COALESCE(l.performance_label, 'AVERAGE PERFORMING')
+			END,
 		       sa.total_sales, s.batches_created, s.batches_rated, s.accepted_jokes,
 		       COALESCE(us.unsold_jokes, 0),
 		       GREATEST(s.accepted_jokes - COALESCE(us.unsold_jokes, 0), 0) AS sold_jokes_count,
@@ -1281,7 +1266,8 @@ func (r *PostgresRepository) GetTeamSummary(ctx context.Context, roundID, teamID
 		JOIN ranks r ON r.team_id = t.id
 		JOIN unrated u ON true
 		JOIN sales sa ON true
-		LEFT JOIN labels l ON l.team_id = t.id
+		LEFT JOIN market_labeled l ON l.team_id = t.id
+		LEFT JOIN market_market_counts mmc ON mmc.team_id = t.id
 		LEFT JOIN unsold us ON true
 		WHERE t.id = $2
 	`
