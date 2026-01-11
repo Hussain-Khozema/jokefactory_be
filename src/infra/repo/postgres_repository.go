@@ -976,7 +976,9 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			LEFT JOIN sales_counts sales ON sales.team_id = trs.team_id
 			LEFT JOIN market_counts market ON market.team_id = trs.team_id
 			LEFT JOIN unsold_counts unsold ON unsold.team_id = trs.team_id
-			WHERE trs.round_id = $1
+			-- Only compare teams that actually have items in the market (published jokes).
+			-- Teams with 0 market items shouldn't influence the performance labels.
+			WHERE trs.round_id = $1 AND COALESCE(market.total_market, 0) > 0
 		),
 		labeled AS (
 			SELECT team_id,
