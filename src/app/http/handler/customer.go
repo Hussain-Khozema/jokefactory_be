@@ -39,7 +39,14 @@ func (h *CustomerHandler) Market(c *gin.Context) {
 		out = append(out, gin.H{
 			"joke_id":         item.JokeID,
 			"joke_text":       item.JokeText,
-			"team":            gin.H{"id": item.TeamID, "name": item.TeamName, "performance_label": item.TeamLabel},
+			"team": gin.H{
+				"id":                item.TeamID,
+				"name":              item.TeamName,
+				"performance_label": item.TeamLabel,
+				"accepted_jokes":    item.TeamAccepted,
+				"sold_jokes_count":  item.TeamSold,
+				"profit":            item.TeamProfit,
+			},
 			"bought_count":    item.BoughtCount,
 			"is_bought_by_me": item.IsBoughtByMe,
 		})

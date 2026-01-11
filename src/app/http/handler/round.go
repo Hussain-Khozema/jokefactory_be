@@ -76,6 +76,7 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 		"total_sales":       summary.TotalSales,
 		"performance_label": summary.Performance,
 		"unsold_jokes":      summary.UnsoldJokes,
+		"sold_jokes_count":  summary.SoldJokesCount,
 		"batches_created":   summary.BatchesCreated,
 		"batches_rated":     summary.BatchesRated,
 		"accepted_jokes":    summary.AcceptedJokes,

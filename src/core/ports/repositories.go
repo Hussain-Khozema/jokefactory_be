@@ -32,6 +32,9 @@ type MarketItem struct {
 	TeamID       int64
 	TeamName     string
 	TeamLabel    string
+	TeamProfit   float64
+	TeamAccepted int
+	TeamSold     int
 	BoughtCount  int
 	IsBoughtByMe bool
 }
@@ -94,6 +97,7 @@ type TeamSummary struct {
 	BatchesRated    int
 	AcceptedJokes   int
 	UnsoldJokes     int
+	SoldJokesCount  int
 	AvgScoreOverall float64
 	UnratedBatches  int
 }

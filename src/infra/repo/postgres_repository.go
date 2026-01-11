@@ -936,7 +936,12 @@ func (r *PostgresRepository) getCustomerBudget(ctx context.Context, roundID, cus
 
 func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID int64) ([]ports.MarketItem, error) {
 	const q = `
-		WITH ratios AS (
+		WITH cfg AS (
+			SELECT COALESCE(unsold_jokes_penalty, 0)::double precision AS unsold_penalty
+			FROM rounds
+			WHERE round_id = $1
+		),
+		ratios AS (
 			SELECT trs.team_id,
 			       COALESCE(sales.total_sales, 0)::double precision AS sold,
 			       COALESCE(mkt.total_market, 0)::double precision AS total_market,
@@ -967,10 +972,36 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			           ELSE 'AVERAGE PERFORMING'
 			       END AS label
 			FROM ratios
+		),
+		team_stats AS (
+			SELECT trs.team_id,
+			       trs.accepted_jokes,
+			       COALESCE(u.unsold_jokes, 0) AS unsold_jokes,
+			       COALESCE(sales.total_sales, 0) AS total_sales,
+			       COALESCE(sales.total_sales, 0)::double precision - COALESCE(u.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit
+			FROM team_rounds_state trs
+			LEFT JOIN (
+				SELECT pj.team_id, COUNT(*) AS unsold_jokes
+				FROM published_jokes pj
+				LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
+				WHERE pj.round_id = $1 AND p.purchase_id IS NULL
+				GROUP BY pj.team_id
+			) u ON u.team_id = trs.team_id
+			LEFT JOIN (
+				SELECT pj.team_id, COUNT(*) AS total_sales
+				FROM purchases p
+				JOIN published_jokes pj ON pj.joke_id = p.joke_id
+				WHERE p.round_id = $1
+				GROUP BY pj.team_id
+			) sales ON sales.team_id = trs.team_id
+			WHERE trs.round_id = $1
 		)
 		SELECT pj.joke_id, j.joke_text, pj.team_id, t.name, COALESCE(l.label, 'AVERAGE PERFORMING') AS label,
 			COALESCE(pc.purchase_count, 0) AS purchase_count,
-			CASE WHEN p.purchase_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_bought
+			CASE WHEN p.purchase_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_bought,
+			COALESCE(ts.profit, 0) AS profit,
+			COALESCE(ts.accepted_jokes, 0) AS accepted_jokes,
+			GREATEST(COALESCE(ts.accepted_jokes, 0) - COALESCE(ts.unsold_jokes, 0), 0) AS sold_jokes_count
 		FROM published_jokes pj
 		JOIN jokes j ON j.joke_id = pj.joke_id
 		JOIN teams t ON t.id = pj.team_id
@@ -982,6 +1013,7 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			GROUP BY joke_id
 		) pc ON pc.joke_id = pj.joke_id
 		LEFT JOIN labeled l ON l.team_id = pj.team_id
+		LEFT JOIN team_stats ts ON ts.team_id = pj.team_id
 		WHERE pj.round_id = $1
 		ORDER BY pj.created_at DESC, pj.joke_id DESC
 	`
@@ -994,7 +1026,7 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 	var items []ports.MarketItem
 	for rows.Next() {
 		var item ports.MarketItem
-		if err := rows.Scan(&item.JokeID, &item.JokeText, &item.TeamID, &item.TeamName, &item.TeamLabel, &item.BoughtCount, &item.IsBoughtByMe); err != nil {
+		if err := rows.Scan(&item.JokeID, &item.JokeText, &item.TeamID, &item.TeamName, &item.TeamLabel, &item.BoughtCount, &item.IsBoughtByMe, &item.TeamProfit, &item.TeamAccepted, &item.TeamSold); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1224,7 +1256,9 @@ func (r *PostgresRepository) GetTeamSummary(ctx context.Context, roundID, teamID
 		)
 		SELECT t.id, t.name, $1 as round_id, r.rnk, sa.total_sales, COALESCE(r.profit, 0), COALESCE(l.performance_label, 'AVERAGE PERFORMING'),
 		       sa.total_sales, s.batches_created, s.batches_rated, s.accepted_jokes,
-		       COALESCE(us.unsold_jokes, 0), COALESCE(s.avg_score, 0), u.cnt
+		       COALESCE(us.unsold_jokes, 0),
+		       GREATEST(s.accepted_jokes - COALESCE(us.unsold_jokes, 0), 0) AS sold_jokes_count,
+		       COALESCE(s.avg_score, 0), u.cnt
 		FROM teams t
 		JOIN stats s ON true
 		JOIN ranks r ON r.team_id = t.id
@@ -1238,7 +1272,7 @@ func (r *PostgresRepository) GetTeamSummary(ctx context.Context, roundID, teamID
 	if err := r.pool.QueryRow(ctx, q, roundID, teamID).Scan(
 		&summary.Team.ID, &summary.Team.Name, &summary.RoundID, &summary.Rank, &summary.Points, &summary.Profit, &summary.Performance, &summary.TotalSales,
 		&summary.BatchesCreated, &summary.BatchesRated, &summary.AcceptedJokes,
-		&summary.UnsoldJokes, &summary.AvgScoreOverall, &summary.UnratedBatches,
+		&summary.UnsoldJokes, &summary.SoldJokesCount, &summary.AvgScoreOverall, &summary.UnratedBatches,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("team summary")
