@@ -941,67 +941,58 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			FROM rounds
 			WHERE round_id = $1
 		),
-		ratios AS (
+		sales_counts AS (
+			SELECT pj.team_id, COUNT(*) AS total_sales
+			FROM purchases p
+			JOIN published_jokes pj ON pj.joke_id = p.joke_id
+			WHERE p.round_id = $1
+			GROUP BY pj.team_id
+		),
+		market_counts AS (
+			SELECT team_id, COUNT(*) AS total_market
+			FROM published_jokes
+			WHERE round_id = $1
+			GROUP BY team_id
+		),
+		unsold_counts AS (
+			SELECT pj.team_id, COUNT(*) AS unsold_jokes
+			FROM published_jokes pj
+			LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
+			WHERE pj.round_id = $1 AND p.purchase_id IS NULL
+			GROUP BY pj.team_id
+		),
+		team_base AS (
 			SELECT trs.team_id,
-			       COALESCE(sales.total_sales, 0)::double precision AS sold,
-			       COALESCE(mkt.total_market, 0)::double precision AS total_market,
-			       CASE WHEN COALESCE(mkt.total_market, 0) = 0 THEN 0
-			            ELSE COALESCE(sales.total_sales, 0)::double precision / COALESCE(mkt.total_market, 0)
-			       END AS ratio
+			       COALESCE(trs.accepted_jokes, 0) AS accepted_jokes,
+			       COALESCE(unsold.unsold_jokes, 0) AS unsold_jokes,
+			       COALESCE(sales.total_sales, 0) AS total_sales,
+			       COALESCE(market.total_market, 0)::double precision AS total_market,
+			       CASE
+			           WHEN COALESCE(market.total_market, 0) = 0 THEN 0
+			           ELSE COALESCE(sales.total_sales, 0)::double precision / COALESCE(market.total_market, 0)
+			       END AS ratio,
+			       COALESCE(sales.total_sales, 0)::double precision - COALESCE(unsold.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit
 			FROM team_rounds_state trs
-			LEFT JOIN (
-				SELECT team_id, COUNT(*) AS total_market
-				FROM published_jokes
-				WHERE round_id = $1
-				GROUP BY team_id
-			) mkt ON mkt.team_id = trs.team_id
-			LEFT JOIN (
-				SELECT pj.team_id, COUNT(*) AS total_sales
-				FROM purchases p
-				JOIN published_jokes pj ON pj.joke_id = p.joke_id
-				WHERE p.round_id = $1
-				GROUP BY pj.team_id
-			) sales ON sales.team_id = trs.team_id
+			LEFT JOIN sales_counts sales ON sales.team_id = trs.team_id
+			LEFT JOIN market_counts market ON market.team_id = trs.team_id
+			LEFT JOIN unsold_counts unsold ON unsold.team_id = trs.team_id
 			WHERE trs.round_id = $1
 		),
 		labeled AS (
 			SELECT team_id,
 			       CASE
-			           WHEN ROW_NUMBER() OVER (ORDER BY ratio DESC, team_id) <= 3 THEN 'HIGH PERFORMING'
-			           WHEN ROW_NUMBER() OVER (ORDER BY ratio ASC, team_id) <= 3 THEN 'LOW PERFORMING'
+			           WHEN ROW_NUMBER() OVER (ORDER BY ratio DESC, profit DESC, team_id) <= 3 THEN 'HIGH PERFORMING'
+			           WHEN ROW_NUMBER() OVER (ORDER BY ratio ASC, profit ASC, team_id) <= 3 THEN 'LOW PERFORMING'
 			           ELSE 'AVERAGE PERFORMING'
 			       END AS label
-			FROM ratios
-		),
-		team_stats AS (
-			SELECT trs.team_id,
-			       trs.accepted_jokes,
-			       COALESCE(u.unsold_jokes, 0) AS unsold_jokes,
-			       COALESCE(sales.total_sales, 0) AS total_sales,
-			       COALESCE(sales.total_sales, 0)::double precision - COALESCE(u.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit
-			FROM team_rounds_state trs
-			LEFT JOIN (
-				SELECT pj.team_id, COUNT(*) AS unsold_jokes
-				FROM published_jokes pj
-				LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
-				WHERE pj.round_id = $1 AND p.purchase_id IS NULL
-				GROUP BY pj.team_id
-			) u ON u.team_id = trs.team_id
-			LEFT JOIN (
-				SELECT pj.team_id, COUNT(*) AS total_sales
-				FROM purchases p
-				JOIN published_jokes pj ON pj.joke_id = p.joke_id
-				WHERE p.round_id = $1
-				GROUP BY pj.team_id
-			) sales ON sales.team_id = trs.team_id
-			WHERE trs.round_id = $1
+			FROM team_base
 		)
 		SELECT pj.joke_id, j.joke_text, pj.team_id, t.name, COALESCE(l.label, 'AVERAGE PERFORMING') AS label,
 			COALESCE(pc.purchase_count, 0) AS purchase_count,
 			CASE WHEN p.purchase_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_bought,
-			COALESCE(ts.profit, 0) AS profit,
-			COALESCE(ts.accepted_jokes, 0) AS accepted_jokes,
-			GREATEST(COALESCE(ts.accepted_jokes, 0) - COALESCE(ts.unsold_jokes, 0), 0) AS sold_jokes_count
+			COALESCE(tb.profit, 0) AS profit,
+			COALESCE(tb.accepted_jokes, 0) AS accepted_jokes,
+			GREATEST(COALESCE(tb.accepted_jokes, 0) - COALESCE(tb.unsold_jokes, 0), 0) AS sold_jokes_count
 		FROM published_jokes pj
 		JOIN jokes j ON j.joke_id = pj.joke_id
 		JOIN teams t ON t.id = pj.team_id
@@ -1013,7 +1004,7 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			GROUP BY joke_id
 		) pc ON pc.joke_id = pj.joke_id
 		LEFT JOIN labeled l ON l.team_id = pj.team_id
-		LEFT JOIN team_stats ts ON ts.team_id = pj.team_id
+		LEFT JOIN team_base tb ON tb.team_id = pj.team_id
 		WHERE pj.round_id = $1
 		ORDER BY pj.created_at DESC, pj.joke_id DESC
 	`
