@@ -980,14 +980,38 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 			-- Teams with 0 market items shouldn't influence the performance labels.
 			WHERE trs.round_id = $1 AND COALESCE(market.total_market, 0) > 0
 		),
-		labeled AS (
-			SELECT team_id,
-			       CASE
-			           WHEN ROW_NUMBER() OVER (ORDER BY ratio DESC, profit DESC, team_id) <= 3 THEN 'HIGH PERFORMING'
-			           WHEN ROW_NUMBER() OVER (ORDER BY ratio ASC, profit ASC, team_id) <= 3 THEN 'LOW PERFORMING'
-			           ELSE 'AVERAGE PERFORMING'
-			       END AS label
+		ranked AS (
+			SELECT
+				team_id,
+				ROW_NUMBER() OVER (ORDER BY ratio DESC, profit DESC, team_id) AS rnk,
+				COUNT(*) OVER () AS team_count
 			FROM team_base
+		),
+		labeled AS (
+			SELECT
+				team_id,
+				CASE
+					-- Case 1: teams in market <= 5
+					WHEN team_count <= 5 AND rnk = 1 THEN 'HIGH PERFORMING'
+					WHEN team_count <= 5 AND rnk = 2 THEN 'AVERAGE PERFORMING'
+					WHEN team_count <= 5 THEN 'LOW PERFORMING'
+
+					-- Case 2: teams in market = 6 or 7
+					WHEN team_count IN (6, 7) AND rnk = 1 THEN 'HIGH PERFORMING'
+					WHEN team_count IN (6, 7) AND rnk IN (2, 3) THEN 'AVERAGE PERFORMING'
+					WHEN team_count IN (6, 7) THEN 'LOW PERFORMING'
+
+					-- Case 3: teams in market = 8
+					WHEN team_count = 8 AND rnk <= 2 THEN 'HIGH PERFORMING'
+					WHEN team_count = 8 AND rnk IN (3, 4) THEN 'AVERAGE PERFORMING'
+					WHEN team_count = 8 THEN 'LOW PERFORMING'
+
+					-- Case 4: teams in market >= 9
+					WHEN team_count >= 9 AND rnk <= 3 THEN 'HIGH PERFORMING'
+					WHEN team_count >= 9 AND rnk IN (4, 5, 6) THEN 'AVERAGE PERFORMING'
+					ELSE 'LOW PERFORMING'
+				END AS label
+			FROM ranked
 		)
 		SELECT pj.joke_id, j.joke_text, pj.team_id, t.name, COALESCE(l.label, 'AVERAGE PERFORMING') AS label,
 			COALESCE(pc.purchase_count, 0) AS purchase_count,
