@@ -86,7 +86,7 @@ type LogConfig struct {
 // AdminConfig holds admin credentials.
 type AdminConfig struct {
 	// AdminPassword is used for instructor login.
-	AdminPassword string `envconfig:"ADMIN_PASSWORD" default:"123"`
+	AdminPassword string `envconfig:"ADMIN_PASSWORD" default:"Toyota410"`
 }
 
 // DSN returns the PostgreSQL connection string.
