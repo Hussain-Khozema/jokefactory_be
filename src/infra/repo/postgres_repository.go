@@ -400,6 +400,27 @@ func (r *PostgresRepository) UpdateRoundConfig(ctx context.Context, roundID int6
 		r.log.Error("UpdateRoundConfig failed", "round_id", roundID, "err", err)
 		return nil, err
 	}
+
+	// Keep customer budgets consistent with the round config.
+	// We always update starting_budget to match the configured round budget.
+	// If the customer hasn't spent anything yet (remaining == starting), we also
+	// reseed remaining_budget to the new budget (fixes rows created with 0 after ResetGame).
+	const syncCustomerBudgets = `
+		UPDATE customer_round_budget
+		SET
+			starting_budget = $2,
+			remaining_budget = CASE
+				WHEN remaining_budget = starting_budget THEN $2
+				ELSE remaining_budget
+			END,
+			updated_at = now()
+		WHERE round_id = $1
+	`
+	if _, err := r.pool.Exec(ctx, syncCustomerBudgets, roundID, customerBudget); err != nil {
+		r.log.Error("UpdateRoundConfig: sync customer budgets failed", "round_id", roundID, "err", err)
+		return nil, err
+	}
+
 	return &rd, nil
 }
 
@@ -457,6 +478,23 @@ func (r *PostgresRepository) StartRound(ctx context.Context, roundID int64, cust
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
 		}
+		return nil, err
+	}
+
+	// Sync customer budgets to match this round's starting budget.
+	// Same "update starting; reseed remaining if unspent" logic as UpdateRoundConfig.
+	const syncCustomerBudgets = `
+		UPDATE customer_round_budget
+		SET
+			starting_budget = $2,
+			remaining_budget = CASE
+				WHEN remaining_budget = starting_budget THEN $2
+				ELSE remaining_budget
+			END,
+			updated_at = now()
+		WHERE round_id = $1
+	`
+	if _, err := tx.Exec(ctx, syncCustomerBudgets, roundID, customerBudget); err != nil {
 		return nil, err
 	}
 
