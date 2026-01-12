@@ -705,12 +705,27 @@ func (r *PostgresRepository) ListBatchesByTeam(ctx context.Context, roundID, tea
 
 		// Fetch jokes for all batches in one query.
 		const jokesQ = `
-			SELECT joke_id, batch_id, joke_text, created_at
-			FROM jokes
-			WHERE batch_id = ANY($1)
-			ORDER BY batch_id, joke_id
+			SELECT
+				j.joke_id,
+				j.batch_id,
+				j.joke_text,
+				j.created_at,
+				(COUNT(p.purchase_id) > 0) AS is_bought,
+				COALESCE(pe.sold_count, 0) AS sold_count
+			FROM jokes j
+			LEFT JOIN purchases p
+				ON p.round_id = $2 AND p.joke_id = j.joke_id
+			LEFT JOIN (
+				SELECT joke_id, COUNT(*) AS sold_count
+				FROM purchase_events
+				WHERE round_id = $2 AND delta = 1
+				GROUP BY joke_id
+			) pe ON pe.joke_id = j.joke_id
+			WHERE j.batch_id = ANY($1)
+			GROUP BY j.joke_id, j.batch_id, j.joke_text, j.created_at, pe.sold_count
+			ORDER BY j.batch_id, j.joke_id
 		`
-		rowsJokes, err := r.pool.Query(ctx, jokesQ, batchIDs)
+		rowsJokes, err := r.pool.Query(ctx, jokesQ, batchIDs, roundID)
 		if err != nil {
 			return nil, err
 		}
@@ -719,7 +734,7 @@ func (r *PostgresRepository) ListBatchesByTeam(ctx context.Context, roundID, tea
 		jokeMap := make(map[int64][]domain.Joke)
 		for rowsJokes.Next() {
 			var j domain.Joke
-			if err := rowsJokes.Scan(&j.ID, &j.BatchID, &j.Text, &j.CreatedAt); err != nil {
+			if err := rowsJokes.Scan(&j.ID, &j.BatchID, &j.Text, &j.CreatedAt, &j.IsBought, &j.SoldCount); err != nil {
 				return nil, err
 			}
 			jokeMap[j.BatchID] = append(jokeMap[j.BatchID], j)

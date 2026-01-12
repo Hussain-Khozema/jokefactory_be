@@ -121,6 +121,12 @@ type Joke struct {
 	BatchID   int64
 	Text      string
 	CreatedAt time.Time
+	// IsBought indicates whether this joke currently has at least one active purchase.
+	// This is populated only in specific read paths (e.g. team batches list).
+	IsBought bool
+	// SoldCount is the total number of times this joke has been purchased (buy events),
+	// regardless of later returns. This is populated only in specific read paths.
+	SoldCount int
 }
 
 // JokeRating represents QC rating.
