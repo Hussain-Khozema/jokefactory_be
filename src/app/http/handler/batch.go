@@ -89,10 +89,10 @@ func (h *BatchHandler) List(c *gin.Context) {
 		var jokes []gin.H
 		for _, j := range b.Jokes {
 			jokes = append(jokes, gin.H{
-				"joke_id":     j.ID,
-				"joke_text":   j.Text,
-				"is_bought":   j.IsBought,
-				"sold_count":  j.SoldCount,
+				"joke_id":      j.ID,
+				"joke_text":    j.Text,
+				"is_published": j.IsPublished,
+				"sold_count":   j.SoldCount,
 			})
 		}
 		out = append(out, gin.H{
@@ -109,4 +109,3 @@ func (h *BatchHandler) List(c *gin.Context) {
 	}
 	response.OK(c, gin.H{"batches": out})
 }
-

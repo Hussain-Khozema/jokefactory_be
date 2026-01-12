@@ -73,17 +73,17 @@ type User struct {
 
 // Round represents a game session.
 type Round struct {
-	ID                 int64
-	RoundNumber        int
-	Status             RoundStatus
-	CustomerBudget     int
-	BatchSize          int
-	MarketPrice        float64
-	CostOfPublishing   float64
-	StartedAt          *time.Time
-	EndedAt            *time.Time
-	CreatedAt          time.Time
-	IsPoppedActive     bool
+	ID               int64
+	RoundNumber      int
+	Status           RoundStatus
+	CustomerBudget   int
+	BatchSize        int
+	MarketPrice      float64
+	CostOfPublishing float64
+	StartedAt        *time.Time
+	EndedAt          *time.Time
+	CreatedAt        time.Time
+	IsPoppedActive   bool
 }
 
 // TeamRoundState tracks per-team stats for a round.
@@ -121,6 +121,10 @@ type Joke struct {
 	BatchID   int64
 	Text      string
 	CreatedAt time.Time
+	// IsPublished indicates whether this joke is published (accepted by QC).
+	// In this game, a joke is considered published if it was rated 5 by QC
+	// (i.e. it exists in published_jokes). Populated only in specific read paths.
+	IsPublished bool
 	// IsBought indicates whether this joke currently has at least one active purchase.
 	// This is populated only in specific read paths (e.g. team batches list).
 	IsBought bool

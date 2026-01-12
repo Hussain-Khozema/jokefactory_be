@@ -710,13 +710,15 @@ func (r *PostgresRepository) ListBatchesByTeam(ctx context.Context, roundID, tea
 				j.batch_id,
 				j.joke_text,
 				j.created_at,
-				(COUNT(p.purchase_id) > 0) AS is_bought,
+				CASE WHEN pj.joke_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_published,
 				COUNT(p.purchase_id) AS sold_count
 			FROM jokes j
+			LEFT JOIN published_jokes pj
+				ON pj.round_id = $2 AND pj.joke_id = j.joke_id
 			LEFT JOIN purchases p
 				ON p.round_id = $2 AND p.joke_id = j.joke_id
 			WHERE j.batch_id = ANY($1)
-			GROUP BY j.joke_id, j.batch_id, j.joke_text, j.created_at
+			GROUP BY j.joke_id, j.batch_id, j.joke_text, j.created_at, pj.joke_id
 			ORDER BY j.batch_id, j.joke_id
 		`
 		rowsJokes, err := r.pool.Query(ctx, jokesQ, batchIDs, roundID)
@@ -728,7 +730,7 @@ func (r *PostgresRepository) ListBatchesByTeam(ctx context.Context, roundID, tea
 		jokeMap := make(map[int64][]domain.Joke)
 		for rowsJokes.Next() {
 			var j domain.Joke
-			if err := rowsJokes.Scan(&j.ID, &j.BatchID, &j.Text, &j.CreatedAt, &j.IsBought, &j.SoldCount); err != nil {
+			if err := rowsJokes.Scan(&j.ID, &j.BatchID, &j.Text, &j.CreatedAt, &j.IsPublished, &j.SoldCount); err != nil {
 				return nil, err
 			}
 			jokeMap[j.BatchID] = append(jokeMap[j.BatchID], j)
