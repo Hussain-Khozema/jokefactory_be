@@ -1631,16 +1631,19 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 	}
 
 	// Reset rounds to defaults instead of deleting them so seeded round ids remain.
+	// Keep these in sync with defaults used by instructor login round seeding
+	// (see core/usecase/admin_auth.go).
 	const resetRoundsQ = `
 		UPDATE rounds
 		SET status = 'CONFIGURED',
-		    customer_budget = 0,
-		    batch_size = 1,
+		    customer_budget = $1,
+		    batch_size = $2,
+		    unsold_jokes_penalty = $3,
 		    started_at = NULL,
 		    ended_at = NULL,
 		    is_popped_active = FALSE
 	`
-	if _, err := tx.Exec(ctx, resetRoundsQ); err != nil {
+	if _, err := tx.Exec(ctx, resetRoundsQ, domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultUnsoldPenalty); err != nil {
 		r.log.Error("ResetGame: reset rounds failed", "error", err)
 		return err
 	}
