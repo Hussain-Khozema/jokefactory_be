@@ -1410,6 +1410,15 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			WHERE b.round_id = $1
 			GROUP BY b.team_id
 		),
+		rejected_jokes AS (
+			-- Unaccepted = reviewed but not published. In this game, only rating=5 is accepted/published.
+			SELECT b.team_id, COUNT(*) AS rejected_jokes
+			FROM batches b
+			JOIN jokes j ON j.batch_id = b.batch_id
+			JOIN joke_ratings jr ON jr.joke_id = j.joke_id
+			WHERE b.round_id = $1 AND jr.rating < 5
+			GROUP BY b.team_id
+		),
 		rated_avg AS (
 			SELECT b.team_id, COALESCE(AVG(b.avg_score), 0) AS avg_score
 			FROM batches b
@@ -1436,6 +1445,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 				trs.batches_rated,
 				COALESCE(sales.total_sales, 0) AS total_sales,
 				trs.accepted_jokes,
+				COALESCE(rrej.rejected_jokes, 0) AS unaccepted_jokes,
 				COALESCE(jc.total_jokes, 0) AS total_jokes,
 				COALESCE(u.unsold_jokes, 0) AS unsold_jokes,
 				(SELECT market_price FROM cfg) * COALESCE(sales.total_sales, 0)::double precision
@@ -1451,11 +1461,12 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 				GROUP BY pj.team_id
 			) sales ON sales.team_id = trs.team_id
 			LEFT JOIN joke_counts jc ON jc.team_id = trs.team_id
+			LEFT JOIN rejected_jokes rrej ON rrej.team_id = trs.team_id
 			LEFT JOIN rated_avg ra ON ra.team_id = trs.team_id
 			LEFT JOIN unsold u ON u.team_id = trs.team_id
 			LEFT JOIN market m ON m.team_id = trs.team_id
 			WHERE trs.round_id = $1
-			GROUP BY t.id, t.name, trs.batches_rated, sales.total_sales, trs.accepted_jokes, jc.total_jokes, u.unsold_jokes, ra.avg_score, m.total_market
+			GROUP BY t.id, t.name, trs.batches_rated, sales.total_sales, trs.accepted_jokes, rrej.rejected_jokes, jc.total_jokes, u.unsold_jokes, ra.avg_score, m.total_market
 		)
 		SELECT
 			DENSE_RANK() OVER (ORDER BY profit DESC) as rank,
@@ -1464,6 +1475,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			batches_rated,
 			total_sales,
 			accepted_jokes,
+			unaccepted_jokes,
 			total_jokes,
 			unsold_jokes,
 			profit,
@@ -1480,7 +1492,7 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 	var stats []ports.TeamStats
 	for rows.Next() {
 		var s ports.TeamStats
-		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.BatchesRated, &s.TotalSales, &s.AcceptedJokes, &s.TotalJokes, &s.UnsoldJokes, &s.Profit, &s.AvgScoreOverall); err != nil {
+		if err := rows.Scan(&s.Rank, &s.Team.ID, &s.Team.Name, &s.BatchesRated, &s.TotalSales, &s.AcceptedJokes, &s.UnacceptedJokes, &s.TotalJokes, &s.UnsoldJokes, &s.Profit, &s.AvgScoreOverall); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)
@@ -1499,6 +1511,22 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 	result := &ports.RoundStats{
 		RoundID:     roundID,
 		Leaderboard: leaderboard,
+	}
+
+	// Rejection chart data per team:
+	// - unaccepted_jokes = jokes rated < 5 (already computed in leaderboard)
+	// - rejection_rate = unaccepted_jokes / total_jokes (as requested by FE)
+	for _, t := range leaderboard {
+		var rate float64
+		if t.TotalJokes > 0 {
+			rate = float64(t.UnacceptedJokes) / float64(t.TotalJokes)
+		}
+		result.RejectionByTeam = append(result.RejectionByTeam, ports.TeamRejectionPoint{
+			TeamID:          t.Team.ID,
+			TeamName:        t.Team.Name,
+			UnacceptedJokes: t.UnacceptedJokes,
+			RejectionRate:   rate,
+		})
 	}
 
 	// Sales over time (cumulative points) per team

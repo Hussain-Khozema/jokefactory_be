@@ -206,6 +206,7 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 	response.OK(c, gin.H{
 		"round_id":               stats.RoundID,
 		"leaderboard":            stats.Leaderboard,
+		"rejection_by_team":      stats.RejectionByTeam,
 		"sales_over_time":        stats.SalesOverTime,
 		"batch_sequence_quality": stats.BatchSequenceQuality,
 		"batch_size_quality":     stats.BatchSizeQuality,

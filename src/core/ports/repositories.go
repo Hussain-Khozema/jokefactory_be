@@ -109,6 +109,7 @@ type TeamStats struct {
 	BatchesRated    int         `json:"batches_rated"`
 	TotalSales      int         `json:"total_sales"`
 	AcceptedJokes   int         `json:"accepted_jokes"`
+	UnacceptedJokes int         `json:"unaccepted_jokes"`
 	AvgScoreOverall float64     `json:"avg_score_overall"`
 	TotalJokes      int         `json:"total_jokes"`
 	UnsoldJokes     int         `json:"unsold_jokes"`
@@ -145,10 +146,19 @@ type BatchSizeQualityPoint struct {
 	AvgScore    float64 `json:"avg_score"`
 }
 
+// TeamRejectionPoint represents rejection-related metrics per team for charts.
+type TeamRejectionPoint struct {
+	TeamID          int64   `json:"team_id"`
+	TeamName        string  `json:"team_name"`
+	UnacceptedJokes int     `json:"unaccepted_jokes"`
+	RejectionRate   float64 `json:"rejection_rate"`
+}
+
 // RoundStats aggregates leaderboard plus chart data for instructor dashboard.
 type RoundStats struct {
 	RoundID              int64                   `json:"round_id"`
 	Leaderboard          []TeamStats             `json:"leaderboard"`
+	RejectionByTeam      []TeamRejectionPoint    `json:"rejection_by_team"`
 	SalesOverTime        []SalesPoint            `json:"sales_over_time"`
 	BatchSequenceQuality []BatchSequencePoint    `json:"batch_sequence_quality"`
 	BatchSizeQuality     []BatchSizeQualityPoint `json:"batch_size_quality"`
