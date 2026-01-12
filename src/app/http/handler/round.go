@@ -20,24 +20,20 @@ func NewRoundHandler(roundService *usecase.RoundService) *RoundHandler {
 }
 
 func (h *RoundHandler) Active(c *gin.Context) {
-	rd, err := h.roundService.Active(c.Request.Context())
+	rounds, err := h.roundService.List(c.Request.Context())
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	if rd == nil {
-		// No active round is not an error; return a null round for client convenience.
-		response.OK(c, gin.H{"round": nil})
-		return
-	}
 
-	maxBatchSize := rd.BatchSize
-	if rd.RoundNumber == 2 {
-		maxBatchSize = 10
-	}
+	out := make([]gin.H, 0, len(rounds))
+	for _, rd := range rounds {
+		maxBatchSize := rd.BatchSize
+		if rd.RoundNumber == 2 {
+			maxBatchSize = 10
+		}
 
-	response.OK(c, gin.H{
-		"round": gin.H{
+		out = append(out, gin.H{
 			"id":                 rd.ID,
 			"round_number":       rd.RoundNumber,
 			"status":             rd.Status,
@@ -49,8 +45,10 @@ func (h *RoundHandler) Active(c *gin.Context) {
 			"started_at":         rd.StartedAt,
 			"ended_at":           rd.EndedAt,
 			"is_popped_active":   rd.IsPoppedActive,
-		},
-	})
+		})
+	}
+
+	response.OK(c, gin.H{"rounds": out})
 }
 
 func (h *RoundHandler) TeamSummary(c *gin.Context) {
