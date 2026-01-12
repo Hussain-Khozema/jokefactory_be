@@ -20,32 +20,37 @@ func NewRoundHandler(roundService *usecase.RoundService) *RoundHandler {
 }
 
 func (h *RoundHandler) Active(c *gin.Context) {
-	rounds, err := h.roundService.List(c.Request.Context())
+	rd, err := h.roundService.Active(c.Request.Context())
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	resp := make([]gin.H, 0, len(rounds))
-	for _, rd := range rounds {
-		maxBatchSize := rd.BatchSize
-		if rd.RoundNumber == 2 {
-			maxBatchSize = 10
-		}
-		resp = append(resp, gin.H{
-			"id":                   rd.ID,
-			"round_number":         rd.RoundNumber,
-			"status":               rd.Status,
-			"batch_size":           rd.BatchSize,
-			"max_batch_size":       maxBatchSize,
-			"customer_budget":      rd.CustomerBudget,
-			"market_price":         rd.MarketPrice,
-			"cost_of_publishing":   rd.CostOfPublishing,
-			"started_at":           rd.StartedAt,
-			"ended_at":             rd.EndedAt,
-			"is_popped_active":     rd.IsPoppedActive,
-		})
+	if rd == nil {
+		// No active round is not an error; return a null round for client convenience.
+		response.OK(c, gin.H{"round": nil})
+		return
 	}
-	response.OK(c, gin.H{"rounds": resp})
+
+	maxBatchSize := rd.BatchSize
+	if rd.RoundNumber == 2 {
+		maxBatchSize = 10
+	}
+
+	response.OK(c, gin.H{
+		"round": gin.H{
+			"id":                 rd.ID,
+			"round_number":       rd.RoundNumber,
+			"status":             rd.Status,
+			"batch_size":         rd.BatchSize,
+			"max_batch_size":     maxBatchSize,
+			"customer_budget":    rd.CustomerBudget,
+			"market_price":       rd.MarketPrice,
+			"cost_of_publishing": rd.CostOfPublishing,
+			"started_at":         rd.StartedAt,
+			"ended_at":           rd.EndedAt,
+			"is_popped_active":   rd.IsPoppedActive,
+		},
+	})
 }
 
 func (h *RoundHandler) TeamSummary(c *gin.Context) {
