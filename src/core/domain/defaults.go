@@ -7,6 +7,9 @@ const DefaultInstructorCustomerBudget = 20
 // DefaultInstructorBatchSize is the default batch size when an instructor seeds/configures rounds.
 const DefaultInstructorBatchSize = 5
 
-// DefaultUnsoldPenalty is the default unsold joke penalty used when seeding/configuring rounds.
-const DefaultUnsoldPenalty = 0.1
+// DefaultMarketPrice is the default revenue per sale when seeding/configuring rounds.
+const DefaultMarketPrice = 1.0
+
+// DefaultCostOfPublishing is the default cost per published joke when seeding/configuring rounds.
+const DefaultCostOfPublishing = 0.1
 

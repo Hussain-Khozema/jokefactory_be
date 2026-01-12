@@ -78,7 +78,8 @@ type Round struct {
 	Status             RoundStatus
 	CustomerBudget     int
 	BatchSize          int
-	UnsoldJokesPenalty float64
+	MarketPrice        float64
+	CostOfPublishing   float64
 	StartedAt          *time.Time
 	EndedAt            *time.Time
 	CreatedAt          time.Time
@@ -149,8 +150,8 @@ type PublishedJoke struct {
 type CustomerRoundBudget struct {
 	RoundID         int64
 	CustomerUserID  int64
-	StartingBudget  int
-	RemainingBudget int
+	StartingBudget  float64
+	RemainingBudget float64
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

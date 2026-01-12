@@ -180,9 +180,9 @@ type GameRepository interface {
 	GetRoundByID(ctx context.Context, roundID int64) (*domain.Round, error)
 	GetLatestRound(ctx context.Context) (*domain.Round, error)
 	ListRounds(ctx context.Context) ([]domain.Round, error)
-	UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error)
-	InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error)
-	StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error)
+	UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error)
+	InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error)
+	StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error)
 	EndRound(ctx context.Context, roundID int64) (*domain.Round, error)
 	SetRoundPopupState(ctx context.Context, roundID int64, isActive bool) (*domain.Round, error)
 
@@ -202,8 +202,8 @@ type GameRepository interface {
 	// Market and budget
 	EnsureCustomerBudget(ctx context.Context, roundID, customerID int64, starting int) (*domain.CustomerRoundBudget, error)
 	ListMarket(ctx context.Context, roundID, customerID int64) ([]MarketItem, error)
-	BuyJoke(ctx context.Context, roundID, customerID, jokeID int64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error)
-	ReturnJoke(ctx context.Context, roundID, customerID, jokeID int64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error)
+	BuyJoke(ctx context.Context, roundID, customerID, jokeID int64, marketPrice float64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error)
+	ReturnJoke(ctx context.Context, roundID, customerID, jokeID int64, marketPrice float64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error)
 
 	// Stats
 	GetTeamSummary(ctx context.Context, roundID, teamID int64) (*TeamSummary, error)

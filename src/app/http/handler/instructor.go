@@ -42,7 +42,7 @@ func (h *InstructorHandler) Config(c *gin.Context) {
 		return
 	}
 	// We ignore budget/batch here; they will be provided when starting the round.
-	round, err := h.instructorService.InsertConfig(c.Request.Context(), roundID, 0, 1, 0)
+	round, err := h.instructorService.InsertConfig(c.Request.Context(), roundID, 0, 1, 1, 0.1)
 	if err != nil {
 		// Inline log to help diagnose server errors in lower layers
 		c.Error(err) // recorded in Gin context; already gets logged by middleware
@@ -130,7 +130,7 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 		return
 	}
 
-	round, err := h.instructorService.StartRoundWithConfig(c.Request.Context(), roundID, req.CustomerBudget, batchSize, req.UnsoldJokesPenalty)
+	round, err := h.instructorService.StartRoundWithConfig(c.Request.Context(), roundID, req.CustomerBudget, batchSize, req.MarketPrice, req.CostOfPublishing)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
@@ -182,7 +182,8 @@ func (h *InstructorHandler) SetPopupState(c *gin.Context) {
 		"status":               round.Status,
 		"customer_budget":      round.CustomerBudget,
 		"batch_size":           round.BatchSize,
-		"unsold_jokes_penalty": round.UnsoldJokesPenalty,
+		"market_price":         round.MarketPrice,
+		"cost_of_publishing":   round.CostOfPublishing,
 		"started_at":           round.StartedAt,
 		"ended_at":             round.EndedAt,
 		"is_popped_active":     round.IsPoppedActive,

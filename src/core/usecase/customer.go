@@ -60,7 +60,7 @@ func (s *CustomerService) Buy(ctx context.Context, userID, roundID, jokeID int64
 	if _, err := s.repo.EnsureCustomerBudget(ctx, roundID, userID, round.CustomerBudget); err != nil {
 		return nil, nil, 0, err
 	}
-	return s.repo.BuyJoke(ctx, roundID, userID, jokeID)
+	return s.repo.BuyJoke(ctx, roundID, userID, jokeID, round.MarketPrice)
 }
 
 func (s *CustomerService) Return(ctx context.Context, userID, roundID, jokeID int64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error) {
@@ -77,7 +77,7 @@ func (s *CustomerService) Return(ctx context.Context, userID, roundID, jokeID in
 	if _, err := s.repo.EnsureCustomerBudget(ctx, roundID, userID, round.CustomerBudget); err != nil {
 		return nil, nil, 0, err
 	}
-	return s.repo.ReturnJoke(ctx, roundID, userID, jokeID)
+	return s.repo.ReturnJoke(ctx, roundID, userID, jokeID, round.MarketPrice)
 }
 
 func (s *CustomerService) ensureCustomer(ctx context.Context, userID int64) error {

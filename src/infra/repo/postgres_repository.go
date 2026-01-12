@@ -298,14 +298,14 @@ func (r *PostgresRepository) GetTeam(ctx context.Context, teamID int64) (*domain
 
 func (r *PostgresRepository) GetActiveRound(ctx context.Context) (*domain.Round, error) {
 	const q = `
-		SELECT round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		SELECT round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 		FROM rounds
 		WHERE status = 'ACTIVE'
 		LIMIT 1
 	`
 	var rd domain.Round
 	err := r.pool.QueryRow(ctx, q).Scan(
-		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	)
 	if err != nil {
@@ -319,12 +319,12 @@ func (r *PostgresRepository) GetActiveRound(ctx context.Context) (*domain.Round,
 
 func (r *PostgresRepository) GetRoundByID(ctx context.Context, roundID int64) (*domain.Round, error) {
 	const q = `
-		SELECT round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		SELECT round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 		FROM rounds WHERE round_id = $1
 	`
 	var rd domain.Round
 	if err := r.pool.QueryRow(ctx, q, roundID).Scan(
-		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -337,14 +337,14 @@ func (r *PostgresRepository) GetRoundByID(ctx context.Context, roundID int64) (*
 
 func (r *PostgresRepository) GetLatestRound(ctx context.Context) (*domain.Round, error) {
 	const q = `
-		SELECT round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		SELECT round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 		FROM rounds
 		ORDER BY round_id DESC
 		LIMIT 1
 	`
 	var rd domain.Round
 	err := r.pool.QueryRow(ctx, q).Scan(
-		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	)
 	if err != nil {
@@ -358,7 +358,7 @@ func (r *PostgresRepository) GetLatestRound(ctx context.Context) (*domain.Round,
 
 func (r *PostgresRepository) ListRounds(ctx context.Context) ([]domain.Round, error) {
 	const q = `
-		SELECT round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		SELECT round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 		FROM rounds
 		ORDER BY round_id ASC
 	`
@@ -372,7 +372,7 @@ func (r *PostgresRepository) ListRounds(ctx context.Context) ([]domain.Round, er
 	for rows.Next() {
 		var rd domain.Round
 		if err := rows.Scan(
-			&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+			&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 			&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 		); err != nil {
 			return nil, err
@@ -382,16 +382,19 @@ func (r *PostgresRepository) ListRounds(ctx context.Context) ([]domain.Round, er
 	return rounds, nil
 }
 
-func (r *PostgresRepository) UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error) {
+func (r *PostgresRepository) UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error) {
 	const q = `
 		UPDATE rounds
-		SET customer_budget = $2, batch_size = $3, unsold_jokes_penalty = $4
+		SET customer_budget = $2,
+		    batch_size = $3,
+		    market_price = $4,
+		    cost_of_publishing = $5
 		WHERE round_id = $1
-		RETURNING round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		RETURNING round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
-	if err := r.pool.QueryRow(ctx, q, roundID, customerBudget, batchSize, unsoldJokesPenalty).Scan(
-		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+	if err := r.pool.QueryRow(ctx, q, roundID, customerBudget, batchSize, marketPrice, costOfPublishing).Scan(
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -424,8 +427,8 @@ func (r *PostgresRepository) UpdateRoundConfig(ctx context.Context, roundID int6
 	return &rd, nil
 }
 
-func (r *PostgresRepository) InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error) {
-	rd, err := r.UpdateRoundConfig(ctx, roundID, customerBudget, batchSize, unsoldJokesPenalty)
+func (r *PostgresRepository) InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error) {
+	rd, err := r.UpdateRoundConfig(ctx, roundID, customerBudget, batchSize, marketPrice, costOfPublishing)
 	if err == nil {
 		return rd, nil
 	}
@@ -437,12 +440,12 @@ func (r *PostgresRepository) InsertRoundConfig(ctx context.Context, roundID int6
 	var inserted domain.Round
 	roundNumber := int(roundID)
 	const q = `
-		INSERT INTO rounds (round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty)
-		VALUES ($1, $2, 'CONFIGURED', $3, $4, $5)
-		RETURNING round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		INSERT INTO rounds (round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing)
+		VALUES ($1, $2, 'CONFIGURED', $3, $4, $5, $6)
+		RETURNING round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 	`
-	if err := r.pool.QueryRow(ctx, q, roundID, roundNumber, customerBudget, batchSize, unsoldJokesPenalty).Scan(
-		&inserted.ID, &inserted.RoundNumber, &inserted.Status, &inserted.CustomerBudget, &inserted.BatchSize, &inserted.UnsoldJokesPenalty,
+	if err := r.pool.QueryRow(ctx, q, roundID, roundNumber, customerBudget, batchSize, marketPrice, costOfPublishing).Scan(
+		&inserted.ID, &inserted.RoundNumber, &inserted.Status, &inserted.CustomerBudget, &inserted.BatchSize, &inserted.MarketPrice, &inserted.CostOfPublishing,
 		&inserted.StartedAt, &inserted.EndedAt, &inserted.CreatedAt, &inserted.IsPoppedActive,
 	); err != nil {
 		r.log.Error("InsertRoundConfig insert failed", "round_id", roundID, "err", err)
@@ -452,7 +455,7 @@ func (r *PostgresRepository) InsertRoundConfig(ctx context.Context, roundID int6
 	return &inserted, nil
 }
 
-func (r *PostgresRepository) StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int, unsoldJokesPenalty float64) (*domain.Round, error) {
+func (r *PostgresRepository) StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -464,15 +467,16 @@ func (r *PostgresRepository) StartRound(ctx context.Context, roundID int64, cust
 		SET status = 'ACTIVE',
 		    customer_budget = $2,
 		    batch_size = $3,
-		    unsold_jokes_penalty = $4,
+		    market_price = $4,
+		    cost_of_publishing = $5,
 		    started_at = COALESCE(started_at, now()),
 		    ended_at = NULL
 		WHERE round_id = $1
-		RETURNING round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		RETURNING round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
-	if err := tx.QueryRow(ctx, updateRound, roundID, customerBudget, batchSize, unsoldJokesPenalty).Scan(
-		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+	if err := tx.QueryRow(ctx, updateRound, roundID, customerBudget, batchSize, marketPrice, costOfPublishing).Scan(
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -519,11 +523,11 @@ func (r *PostgresRepository) EndRound(ctx context.Context, roundID int64) (*doma
 		UPDATE rounds
 		SET status = 'ENDED', ended_at = now()
 		WHERE round_id = $1
-		RETURNING round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		RETURNING round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
 	if err := r.pool.QueryRow(ctx, q, roundID).Scan(
-		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -539,11 +543,11 @@ func (r *PostgresRepository) SetRoundPopupState(ctx context.Context, roundID int
 		UPDATE rounds
 		SET is_popped_active = $2
 		WHERE round_id = $1
-		RETURNING round_id, round_number, status, customer_budget, batch_size, unsold_jokes_penalty, started_at, ended_at, created_at, is_popped_active
+		RETURNING round_id, round_number, status, customer_budget, batch_size, market_price, cost_of_publishing, started_at, ended_at, created_at, is_popped_active
 	`
 	var rd domain.Round
 	if err := r.pool.QueryRow(ctx, q, roundID, isActive).Scan(
-		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.UnsoldJokesPenalty,
+		&rd.ID, &rd.RoundNumber, &rd.Status, &rd.CustomerBudget, &rd.BatchSize, &rd.MarketPrice, &rd.CostOfPublishing,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -951,7 +955,8 @@ func (r *PostgresRepository) CountSubmittedBatches(ctx context.Context, roundID 
 const marketPerformanceLabelCTEs = `
 		cfg AS (
 			SELECT
-				COALESCE(unsold_jokes_penalty, 0)::double precision AS unsold_penalty,
+				COALESCE(market_price, 1)::double precision AS market_price,
+				COALESCE(cost_of_publishing, 0.1)::double precision AS cost_of_publishing,
 				(SELECT COUNT(*) FROM published_jokes WHERE round_id = $1) AS total_published_jokes
 			FROM rounds
 			WHERE round_id = $1
@@ -986,7 +991,8 @@ const marketPerformanceLabelCTEs = `
 			           WHEN COALESCE(m.total_market, 0) = 0 THEN 0
 			           ELSE COALESCE(s.total_sales, 0)::double precision / COALESCE(m.total_market, 0)
 			       END AS ratio,
-			       COALESCE(s.total_sales, 0)::double precision - COALESCE(u.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit
+			       (SELECT market_price FROM cfg) * COALESCE(s.total_sales, 0)::double precision
+			         - (SELECT cost_of_publishing FROM cfg) * COALESCE(m.total_market, 0)::double precision AS profit
 			FROM team_rounds_state trs
 			LEFT JOIN market_sales_counts s ON s.team_id = trs.team_id
 			LEFT JOIN market_market_counts m ON m.team_id = trs.team_id
@@ -1103,7 +1109,7 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 	return items, nil
 }
 
-func (r *PostgresRepository) BuyJoke(ctx context.Context, roundID, customerID, jokeID int64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error) {
+func (r *PostgresRepository) BuyJoke(ctx context.Context, roundID, customerID, jokeID int64, marketPrice float64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, 0, err
@@ -1114,7 +1120,7 @@ func (r *PostgresRepository) BuyJoke(ctx context.Context, roundID, customerID, j
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	if budget.RemainingBudget <= 0 {
+	if budget.RemainingBudget < marketPrice {
 		return nil, nil, 0, domain.NewConflictError("insufficient budget")
 	}
 
@@ -1134,7 +1140,7 @@ func (r *PostgresRepository) BuyJoke(ctx context.Context, roundID, customerID, j
 	p.CustomerUserID = customerID
 	p.JokeID = jokeID
 
-	if _, err := tx.Exec(ctx, `UPDATE customer_round_budget SET remaining_budget = remaining_budget - 1, updated_at = now() WHERE round_id = $1 AND customer_user_id = $2`, roundID, customerID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE customer_round_budget SET remaining_budget = remaining_budget - $3, updated_at = now() WHERE round_id = $1 AND customer_user_id = $2`, roundID, customerID, marketPrice); err != nil {
 		return nil, nil, 0, err
 	}
 
@@ -1151,14 +1157,17 @@ func (r *PostgresRepository) BuyJoke(ctx context.Context, roundID, customerID, j
 		return nil, nil, 0, err
 	}
 
-	budget.RemainingBudget--
+	budget, err = r.getCustomerBudgetTx(ctx, tx, roundID, customerID)
+	if err != nil {
+		return nil, nil, 0, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, 0, err
 	}
 	return &p, budget, teamID, nil
 }
 
-func (r *PostgresRepository) ReturnJoke(ctx context.Context, roundID, customerID, jokeID int64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error) {
+func (r *PostgresRepository) ReturnJoke(ctx context.Context, roundID, customerID, jokeID int64, marketPrice float64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, 0, err
@@ -1186,7 +1195,7 @@ func (r *PostgresRepository) ReturnJoke(ctx context.Context, roundID, customerID
 		return nil, nil, 0, err
 	}
 
-	if _, err := tx.Exec(ctx, `UPDATE customer_round_budget SET remaining_budget = remaining_budget + 1, updated_at = now() WHERE round_id = $1 AND customer_user_id = $2`, roundID, customerID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE customer_round_budget SET remaining_budget = remaining_budget + $3, updated_at = now() WHERE round_id = $1 AND customer_user_id = $2`, roundID, customerID, marketPrice); err != nil {
 		return nil, nil, 0, err
 	}
 
@@ -1266,22 +1275,11 @@ func (r *PostgresRepository) GetTeamSummary(ctx context.Context, roundID, teamID
 		),
 		profit_rank AS (
 			SELECT trs.team_id,
-			       COALESCE(sales_all.total_sales, 0)::double precision - COALESCE(u_all.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit
+			       (SELECT market_price FROM cfg) * COALESCE(sales_all.total_sales, 0)::double precision
+			         - (SELECT cost_of_publishing FROM cfg) * COALESCE(market_all.total_market, 0)::double precision AS profit
 			FROM team_rounds_state trs
-			LEFT JOIN (
-				SELECT pj.team_id, COUNT(*) AS total_sales
-				FROM purchases p
-				JOIN published_jokes pj ON pj.joke_id = p.joke_id
-				WHERE p.round_id = $1
-				GROUP BY pj.team_id
-			) sales_all ON sales_all.team_id = trs.team_id
-			LEFT JOIN (
-				SELECT pj.team_id, COUNT(*) AS unsold_jokes
-				FROM published_jokes pj
-				LEFT JOIN purchases p ON p.round_id = pj.round_id AND p.joke_id = pj.joke_id
-				WHERE pj.round_id = $1 AND p.purchase_id IS NULL
-				GROUP BY pj.team_id
-			) u_all ON u_all.team_id = trs.team_id
+			LEFT JOIN market_sales_counts sales_all ON sales_all.team_id = trs.team_id
+			LEFT JOIN market_market_counts market_all ON market_all.team_id = trs.team_id
 			WHERE trs.round_id = $1
 		),
 		ranks AS (
@@ -1390,7 +1388,9 @@ func (r *PostgresRepository) GetLobby(ctx context.Context, roundID int64) (*port
 func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) ([]ports.TeamStats, error) {
 	const q = `
 		WITH cfg AS (
-			SELECT COALESCE(unsold_jokes_penalty, 0)::double precision AS unsold_penalty
+			SELECT
+				COALESCE(market_price, 1)::double precision AS market_price,
+				COALESCE(cost_of_publishing, 0.1)::double precision AS cost_of_publishing
 			FROM rounds
 			WHERE round_id = $1
 		),
@@ -1414,6 +1414,12 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			WHERE pj.round_id = $1 AND p.purchase_id IS NULL
 			GROUP BY pj.team_id
 		),
+		market AS (
+			SELECT team_id, COUNT(*) AS total_market
+			FROM published_jokes
+			WHERE round_id = $1
+			GROUP BY team_id
+		),
 		base AS (
 			SELECT
 				t.id AS team_id,
@@ -1423,7 +1429,8 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 				trs.accepted_jokes,
 				COALESCE(jc.total_jokes, 0) AS total_jokes,
 				COALESCE(u.unsold_jokes, 0) AS unsold_jokes,
-				COALESCE(sales.total_sales, 0)::double precision - COALESCE(u.unsold_jokes, 0)::double precision * (SELECT unsold_penalty FROM cfg) AS profit,
+				(SELECT market_price FROM cfg) * COALESCE(sales.total_sales, 0)::double precision
+				  - (SELECT cost_of_publishing FROM cfg) * COALESCE(m.total_market, 0)::double precision AS profit,
 				COALESCE(ra.avg_score, 0) AS avg_score
 			FROM team_rounds_state trs
 			JOIN teams t ON t.id = trs.team_id
@@ -1437,8 +1444,9 @@ func (r *PostgresRepository) GetRoundStats(ctx context.Context, roundID int64) (
 			LEFT JOIN joke_counts jc ON jc.team_id = trs.team_id
 			LEFT JOIN rated_avg ra ON ra.team_id = trs.team_id
 			LEFT JOIN unsold u ON u.team_id = trs.team_id
+			LEFT JOIN market m ON m.team_id = trs.team_id
 			WHERE trs.round_id = $1
-			GROUP BY t.id, t.name, trs.batches_rated, sales.total_sales, trs.accepted_jokes, jc.total_jokes, u.unsold_jokes, ra.avg_score
+			GROUP BY t.id, t.name, trs.batches_rated, sales.total_sales, trs.accepted_jokes, jc.total_jokes, u.unsold_jokes, ra.avg_score, m.total_market
 		)
 		SELECT
 			DENSE_RANK() OVER (ORDER BY profit DESC) as rank,
@@ -1638,12 +1646,13 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 		SET status = 'CONFIGURED',
 		    customer_budget = $1,
 		    batch_size = $2,
-		    unsold_jokes_penalty = $3,
+		    market_price = $3,
+		    cost_of_publishing = $4,
 		    started_at = NULL,
 		    ended_at = NULL,
 		    is_popped_active = FALSE
 	`
-	if _, err := tx.Exec(ctx, resetRoundsQ, domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultUnsoldPenalty); err != nil {
+	if _, err := tx.Exec(ctx, resetRoundsQ, domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultMarketPrice, domain.DefaultCostOfPublishing); err != nil {
 		r.log.Error("ResetGame: reset rounds failed", "error", err)
 		return err
 	}

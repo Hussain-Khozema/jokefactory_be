@@ -57,14 +57,14 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 		// Ensure round 1 exists
 		if round == nil {
 			roundID := int64(1)
-			r1, err := s.repo.InsertRoundConfig(ctx, roundID, domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultUnsoldPenalty)
+			r1, err := s.repo.InsertRoundConfig(ctx, roundID, domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultMarketPrice, domain.DefaultCostOfPublishing)
 			if err != nil {
 				return nil, err
 			}
 			round = r1 // keep round 1 in the response for compatibility
 		}
 		// Ensure round 2 exists
-		if _, err := s.repo.InsertRoundConfig(ctx, int64(2), domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultUnsoldPenalty); err != nil {
+		if _, err := s.repo.InsertRoundConfig(ctx, int64(2), domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultMarketPrice, domain.DefaultCostOfPublishing); err != nil {
 			return nil, err
 		}
 	}

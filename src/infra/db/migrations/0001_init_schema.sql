@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS rounds (
   status                 round_status NOT NULL DEFAULT 'CONFIGURED',
   customer_budget        INT NOT NULL DEFAULT 10 CHECK (customer_budget >= 0),
   batch_size             INT NOT NULL DEFAULT 5 CHECK (batch_size >= 1),
+  market_price           NUMERIC(8,2) NOT NULL DEFAULT 1 CHECK (market_price >= 0),
+  cost_of_publishing     NUMERIC(8,2) NOT NULL DEFAULT 0.1 CHECK (cost_of_publishing >= 0),
   unsold_jokes_penalty   NUMERIC(6,2) NOT NULL DEFAULT 0,
   is_popped_active       BOOLEAN NOT NULL DEFAULT false,
   started_at             TIMESTAMPTZ NULL,
@@ -154,8 +156,8 @@ CREATE TABLE IF NOT EXISTS published_jokes (
 CREATE TABLE IF NOT EXISTS customer_round_budget (
   round_id         BIGINT NOT NULL REFERENCES rounds(round_id) ON DELETE CASCADE,
   customer_user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-  starting_budget  INT NOT NULL CHECK (starting_budget >= 0),
-  remaining_budget INT NOT NULL CHECK (remaining_budget >= 0),
+  starting_budget  NUMERIC(10,2) NOT NULL CHECK (starting_budget >= 0),
+  remaining_budget NUMERIC(10,2) NOT NULL CHECK (remaining_budget >= 0),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (round_id, customer_user_id)

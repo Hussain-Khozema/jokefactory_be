@@ -39,7 +39,8 @@ type PatchUserRequest struct {
 
 // ConfigRequest updates round configuration.
 type ConfigRequest struct {
-	CustomerBudget     int     `json:"customer_budget" binding:"required"`
-	BatchSize          *int    `json:"batch_size"`
-	UnsoldJokesPenalty float64 `json:"unsold_jokes_penalty" binding:"required"`
+	CustomerBudget    int     `json:"customer_budget" binding:"required"`
+	BatchSize         *int    `json:"batch_size"`
+	MarketPrice       float64 `json:"market_price" binding:"required"`
+	CostOfPublishing  float64 `json:"cost_of_publishing" binding:"required"`
 }
