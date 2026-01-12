@@ -124,8 +124,8 @@ type Joke struct {
 	// IsBought indicates whether this joke currently has at least one active purchase.
 	// This is populated only in specific read paths (e.g. team batches list).
 	IsBought bool
-	// SoldCount is the total number of times this joke has been purchased (buy events),
-	// regardless of later returns. This is populated only in specific read paths.
+	// SoldCount is the number of current active purchases for this joke (current sales).
+	// If a purchase is returned, it no longer counts. This is populated only in specific read paths.
 	SoldCount int
 }
 

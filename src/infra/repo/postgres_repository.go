@@ -711,18 +711,12 @@ func (r *PostgresRepository) ListBatchesByTeam(ctx context.Context, roundID, tea
 				j.joke_text,
 				j.created_at,
 				(COUNT(p.purchase_id) > 0) AS is_bought,
-				COALESCE(pe.sold_count, 0) AS sold_count
+				COUNT(p.purchase_id) AS sold_count
 			FROM jokes j
 			LEFT JOIN purchases p
 				ON p.round_id = $2 AND p.joke_id = j.joke_id
-			LEFT JOIN (
-				SELECT joke_id, COUNT(*) AS sold_count
-				FROM purchase_events
-				WHERE round_id = $2 AND delta = 1
-				GROUP BY joke_id
-			) pe ON pe.joke_id = j.joke_id
 			WHERE j.batch_id = ANY($1)
-			GROUP BY j.joke_id, j.batch_id, j.joke_text, j.created_at, pe.sold_count
+			GROUP BY j.joke_id, j.batch_id, j.joke_text, j.created_at
 			ORDER BY j.batch_id, j.joke_id
 		`
 		rowsJokes, err := r.pool.Query(ctx, jokesQ, batchIDs, roundID)
