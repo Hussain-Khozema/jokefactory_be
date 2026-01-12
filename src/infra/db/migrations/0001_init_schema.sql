@@ -69,7 +69,6 @@ CREATE TABLE IF NOT EXISTS rounds (
   batch_size             INT NOT NULL DEFAULT 5 CHECK (batch_size >= 1),
   market_price           NUMERIC(8,2) NOT NULL DEFAULT 1 CHECK (market_price >= 0),
   cost_of_publishing     NUMERIC(8,2) NOT NULL DEFAULT 0.1 CHECK (cost_of_publishing >= 0),
-  unsold_jokes_penalty   NUMERIC(6,2) NOT NULL DEFAULT 0,
   is_popped_active       BOOLEAN NOT NULL DEFAULT false,
   started_at             TIMESTAMPTZ NULL,
   ended_at               TIMESTAMPTZ NULL,
