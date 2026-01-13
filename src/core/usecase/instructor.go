@@ -110,41 +110,50 @@ func (s *InstructorService) Assign(ctx context.Context, roundID int64, customerC
 }
 
 func (s *InstructorService) PatchUser(ctx context.Context, roundID, userID int64, status domain.ParticipantStatus, role *domain.Role, teamID *int64) (*ports.LobbySnapshot, error) {
-	if status == domain.ParticipantWaiting {
-		role = nil
-		teamID = nil
+	// Fetch existing user so PATCH can support partial updates:
+	// - role omitted => keep existing role
+	// - team_id omitted => keep existing team
+	existing, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
+
+	desiredRole := existing.Role
+	desiredTeamID := existing.TeamID
+
+	// Apply explicit changes from request (if provided)
 	if role != nil {
-		switch *role {
+		desiredRole = role
+	}
+	if teamID != nil {
+		desiredTeamID = teamID
+	}
+
+	// Waiting participants must have no assignment.
+	if status == domain.ParticipantWaiting {
+		desiredRole = nil
+		desiredTeamID = nil
+	}
+
+	// Enforce role/team constraints
+	if desiredRole != nil {
+		switch *desiredRole {
 		case domain.RoleCustomer, domain.RoleInstructor:
 			// These roles must not have a team.
-			teamID = nil
+			desiredTeamID = nil
 		case domain.RoleJM, domain.RoleQC:
-			// JM/QC must have a team; default to existing if none provided.
-			if teamID == nil {
-				user, err := s.repo.GetUserByID(ctx, userID)
-				if err != nil {
-					return nil, err
-				}
-				teamID = user.TeamID
-			}
-			if teamID == nil {
+			// JM/QC must have a team (either provided or already assigned).
+			if desiredTeamID == nil {
 				return nil, domain.NewValidationError("team_id", "team_id is required for JM/QC roles")
 			}
 		default:
 			// Future roles: leave team untouched.
 		}
 	}
-	if err := s.repo.UpdateUserAssignment(ctx, userID, role, teamID); err != nil {
+
+	// Atomic update in repo (also syncs customer_round_budget when role changes to/from CUSTOMER)
+	if err := s.repo.PatchUserInRound(ctx, roundID, userID, status, desiredRole, desiredTeamID); err != nil {
 		return nil, err
-	}
-	if err := s.repo.UpdateUserStatus(ctx, userID, status); err != nil {
-		return nil, err
-	}
-	if status == domain.ParticipantAssigned {
-		if err := s.repo.MarkUserAssigned(ctx, userID); err != nil {
-			return nil, err
-		}
 	}
 	return s.repo.GetLobby(ctx, roundID)
 }

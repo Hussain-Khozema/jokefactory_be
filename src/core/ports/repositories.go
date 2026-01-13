@@ -175,6 +175,11 @@ type GameRepository interface {
 	GetUserByID(ctx context.Context, userID int64) (*domain.User, error)
 	UpdateUserAssignment(ctx context.Context, userID int64, role *domain.Role, teamID *int64) error
 	UpdateUserStatus(ctx context.Context, userID int64, status domain.ParticipantStatus) error
+	// PatchUserInRound updates user role/team/status and keeps customer budget consistent
+	// for the given round (create budget row when becoming CUSTOMER; delete when leaving CUSTOMER).
+	//
+	// Implementation detail: should be atomic (single DB transaction).
+	PatchUserInRound(ctx context.Context, roundID, userID int64, status domain.ParticipantStatus, role *domain.Role, teamID *int64) error
 	MarkUserAssigned(ctx context.Context, userID int64) error
 	ListUsersByStatus(ctx context.Context, status domain.ParticipantStatus) ([]domain.User, error)
 	ListTeamMembers(ctx context.Context, teamID int64) ([]TeamMember, error)

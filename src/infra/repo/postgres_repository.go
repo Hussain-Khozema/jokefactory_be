@@ -109,6 +109,85 @@ func (r *PostgresRepository) UpdateUserAssignment(ctx context.Context, userID in
 	return nil
 }
 
+// PatchUserInRound updates a user's role/team/status within a single transaction, and
+// keeps customer_round_budget consistent when role changes to/from CUSTOMER.
+//
+// Safety: if a CUSTOMER already has active purchases for this round, we block changing
+// them away from CUSTOMER (otherwise we'd risk budget/purchase inconsistencies).
+func (r *PostgresRepository) PatchUserInRound(ctx context.Context, roundID, userID int64, status domain.ParticipantStatus, role *domain.Role, teamID *int64) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Lock user row so role transition checks are consistent.
+	var oldRole *domain.Role
+	if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE user_id = $1 FOR UPDATE`, userID).Scan(&oldRole); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.NewNotFoundError("user")
+		}
+		return err
+	}
+	oldIsCustomer := oldRole != nil && *oldRole == domain.RoleCustomer
+	newIsCustomer := role != nil && *role == domain.RoleCustomer
+
+	// If leaving CUSTOMER, ensure there are no active purchases, then remove budget row.
+	if oldIsCustomer && !newIsCustomer {
+		var purchaseCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM purchases WHERE round_id = $1 AND customer_user_id = $2`, roundID, userID).Scan(&purchaseCount); err != nil {
+			return err
+		}
+		if purchaseCount > 0 {
+			return domain.NewConflictError("cannot change role from CUSTOMER while user has active purchases in this round")
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM customer_round_budget WHERE round_id = $1 AND customer_user_id = $2`, roundID, userID); err != nil {
+			return err
+		}
+	}
+
+	// Update assignment + status. For ASSIGNED, we set assigned_at=now(); otherwise NULL.
+	const updateQ = `
+		UPDATE users
+		SET role = $2,
+		    team_id = $3,
+		    status = $4::participant_status,
+		    assigned_at = CASE
+				WHEN $4::participant_status = 'ASSIGNED' THEN now()
+				ELSE NULL
+			END
+		WHERE user_id = $1
+	`
+	res, err := tx.Exec(ctx, updateQ, userID, role, teamID, status)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return domain.NewNotFoundError("user")
+	}
+
+	// If becoming CUSTOMER, seed budget row for this round (idempotent).
+	if !oldIsCustomer && newIsCustomer {
+		var startingBudget int
+		if err := tx.QueryRow(ctx, `SELECT customer_budget FROM rounds WHERE round_id = $1`, roundID).Scan(&startingBudget); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.NewNotFoundError("round")
+			}
+			return err
+		}
+		const ensureBudgetQ = `
+			INSERT INTO customer_round_budget (round_id, customer_user_id, starting_budget, remaining_budget)
+			VALUES ($1, $2, $3, $3)
+			ON CONFLICT (round_id, customer_user_id) DO NOTHING
+		`
+		if _, err := tx.Exec(ctx, ensureBudgetQ, roundID, userID, startingBudget); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *PostgresRepository) UpdateUserStatus(ctx context.Context, userID int64, status domain.ParticipantStatus) error {
 	const q = `
 		UPDATE users
