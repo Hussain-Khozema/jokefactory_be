@@ -208,6 +208,7 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 		"leaderboard":            stats.Leaderboard,
 		"rejection_by_team":      stats.RejectionByTeam,
 		"sales_over_time":        stats.SalesOverTime,
+		"unrated_jokes_over_time": stats.UnratedJokesOverTime,
 		"batch_sequence_quality": stats.BatchSequenceQuality,
 		"batch_size_quality":     stats.BatchSizeQuality,
 	})

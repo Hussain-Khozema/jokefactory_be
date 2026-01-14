@@ -129,6 +129,16 @@ type SalesPoint struct {
 	CumulativePoints int       `json:"cumulative_points"`
 }
 
+// UnratedJokesPoint represents queue size over time per team.
+type UnratedJokesPoint struct {
+	EventIndex   int       `json:"event_index"`
+	TeamEventIndex int     `json:"team_event_index"`
+	Timestamp    time.Time `json:"timestamp"`
+	TeamID       int64     `json:"team_id"`
+	TeamName     string    `json:"team_name"`
+	QueueCount   int       `json:"queue_count"`
+}
+
 // BatchSequencePoint shows average score by batch submission order for a team.
 type BatchSequencePoint struct {
 	RoundID     int64   `json:"round_id"`
@@ -163,6 +173,7 @@ type RoundStats struct {
 	Leaderboard          []TeamStats             `json:"leaderboard"`
 	RejectionByTeam      []TeamRejectionPoint    `json:"rejection_by_team"`
 	SalesOverTime        []SalesPoint            `json:"sales_over_time"`
+	UnratedJokesOverTime []UnratedJokesPoint     `json:"unrated_jokes_over_time"`
 	BatchSequenceQuality []BatchSequencePoint    `json:"batch_sequence_quality"`
 	BatchSizeQuality     []BatchSizeQualityPoint `json:"batch_size_quality"`
 }

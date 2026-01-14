@@ -716,6 +716,14 @@ func (r *PostgresRepository) CreateBatch(ctx context.Context, roundID, teamID in
 		}
 	}
 
+	const insertSubmissionEvent = `
+		INSERT INTO batch_submission_events (round_id, team_id, batch_id, jokes_count)
+		VALUES ($1, $2, $3, $4)
+	`
+	if _, err := tx.Exec(ctx, insertSubmissionEvent, roundID, teamID, batch.ID, len(jokes)); err != nil {
+		return nil, err
+	}
+
 	if err := r.IncrementBatchCreated(ctx, roundID, teamID); err != nil {
 		return nil, err
 	}
@@ -1671,6 +1679,51 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 		result.SalesOverTime = append(result.SalesOverTime, pnt)
 	}
 
+	// Unrated jokes queue size over time (event at each batch submission)
+	const unratedQ = `
+		WITH events AS (
+			SELECT e.event_id,
+			       e.created_at,
+			       e.team_id,
+			       t.name AS team_name,
+			       ROW_NUMBER() OVER (ORDER BY e.created_at, e.event_id) AS event_idx,
+			       ROW_NUMBER() OVER (PARTITION BY e.team_id ORDER BY e.created_at, e.event_id) AS team_idx
+			FROM batch_submission_events e
+			JOIN teams t ON t.id = e.team_id
+			WHERE e.round_id = $1
+		)
+		SELECT e.event_idx,
+		       e.team_idx,
+		       e.created_at,
+		       e.team_id,
+		       e.team_name,
+		       (
+		       	SELECT COUNT(j.joke_id)
+		       	FROM batches b
+		       	JOIN jokes j ON j.batch_id = b.batch_id
+		       	WHERE b.round_id = $1
+		       	  AND b.team_id = e.team_id
+		       	  AND b.submitted_at IS NOT NULL
+		       	  AND b.submitted_at <= e.created_at
+		       	  AND (b.rated_at IS NULL OR b.rated_at > e.created_at)
+		       ) AS queue_count
+		FROM events e
+		ORDER BY e.event_idx
+	`
+	unratedRows, err := r.pool.Query(ctx, unratedQ, roundID)
+	if err != nil {
+		r.log.Error("GetRoundStatsV2: unrated queue query failed", "round_id", roundID, "error", err)
+		return nil, err
+	}
+	defer unratedRows.Close()
+	for unratedRows.Next() {
+		var pnt ports.UnratedJokesPoint
+		if err := unratedRows.Scan(&pnt.EventIndex, &pnt.TeamEventIndex, &pnt.Timestamp, &pnt.TeamID, &pnt.TeamName, &pnt.QueueCount); err != nil {
+			return nil, err
+		}
+		result.UnratedJokesOverTime = append(result.UnratedJokesOverTime, pnt)
+	}
+
 	// Batch sequence vs quality (learning over time) for the given round
 	const sequenceQ = `
 		SELECT b.round_id,
@@ -1766,6 +1819,7 @@ func (r *PostgresRepository) ResetGame(ctx context.Context) error {
 		TRUNCATE TABLE
 			purchases,
 			purchase_events,
+			batch_submission_events,
 			customer_round_budget,
 			published_jokes,
 			joke_ratings,

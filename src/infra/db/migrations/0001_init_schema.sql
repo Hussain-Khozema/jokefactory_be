@@ -188,6 +188,21 @@ CREATE TABLE IF NOT EXISTS purchase_events (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- =========================
+-- batch_submission_events (audit log of batch submissions for queue tracking)
+-- =========================
+CREATE TABLE IF NOT EXISTS batch_submission_events (
+  event_id          BIGSERIAL PRIMARY KEY,
+  round_id          BIGINT NOT NULL REFERENCES rounds(round_id) ON DELETE CASCADE,
+  team_id           BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  batch_id          BIGINT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
+  jokes_count       INT NOT NULL CHECK (jokes_count >= 0),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_batch_submission_events_round_team_time
+ON batch_submission_events (round_id, team_id, created_at, event_id);
+
 COMMIT;
 
 -- +goose Down
@@ -195,6 +210,7 @@ BEGIN;
 
 DROP TABLE IF EXISTS purchases;
 DROP TABLE IF EXISTS purchase_events;
+DROP TABLE IF EXISTS batch_submission_events;
 DROP TABLE IF EXISTS customer_round_budget;
 DROP TABLE IF EXISTS published_jokes;
 DROP TABLE IF EXISTS joke_ratings;
