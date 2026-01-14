@@ -1058,6 +1058,14 @@ const marketPerformanceLabelCTEs = `
 			WHERE p.round_id = $1
 			GROUP BY pj.team_id
 		),
+		market_sold_counts AS (
+			-- Count jokes that have at least one purchase (not total purchases).
+			SELECT pj.team_id, COUNT(DISTINCT p.joke_id) AS sold_jokes
+			FROM purchases p
+			JOIN published_jokes pj ON pj.joke_id = p.joke_id
+			WHERE p.round_id = $1
+			GROUP BY pj.team_id
+		),
 		market_market_counts AS (
 			SELECT team_id, COUNT(*) AS total_market
 			FROM published_jokes
@@ -1076,15 +1084,17 @@ const marketPerformanceLabelCTEs = `
 			       COALESCE(trs.accepted_jokes, 0) AS accepted_jokes,
 			       COALESCE(u.unsold_jokes, 0) AS unsold_jokes,
 			       COALESCE(s.total_sales, 0) AS total_sales,
+			       COALESCE(sc.sold_jokes, 0)::double precision AS sold_jokes,
 			       COALESCE(m.total_market, 0)::double precision AS total_market,
 			       CASE
 			           WHEN COALESCE(m.total_market, 0) = 0 THEN 0
-			           ELSE COALESCE(s.total_sales, 0)::double precision / COALESCE(m.total_market, 0)
+			           ELSE COALESCE(sc.sold_jokes, 0)::double precision / COALESCE(m.total_market, 0)
 			       END AS ratio,
 			       (SELECT market_price FROM cfg) * COALESCE(s.total_sales, 0)::double precision
 			         - (SELECT cost_of_publishing FROM cfg) * COALESCE(m.total_market, 0)::double precision AS profit
 			FROM team_rounds_state trs
 			LEFT JOIN market_sales_counts s ON s.team_id = trs.team_id
+			LEFT JOIN market_sold_counts sc ON sc.team_id = trs.team_id
 			LEFT JOIN market_market_counts m ON m.team_id = trs.team_id
 			LEFT JOIN market_unsold_counts u ON u.team_id = trs.team_id
 			WHERE trs.round_id = $1 AND COALESCE(m.total_market, 0) > 0
