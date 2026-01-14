@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -74,11 +75,19 @@ func (h *QCHandler) SubmitRatings(c *gin.Context) {
 	}
 	var ratings []domain.JokeRating
 	for _, r := range req.Ratings {
+		var title *string
+		if r.JokeTitle != nil {
+			t := strings.TrimSpace(*r.JokeTitle)
+			if t != "" {
+				title = &t
+			}
+		}
 		ratings = append(ratings, domain.JokeRating{
 			JokeID:   r.JokeID,
 			QCUserID: userID,
 			Rating:   r.Rating,
 			Tag:      domain.QCTag(r.Tag),
+			JokeTitle: title,
 		})
 	}
 

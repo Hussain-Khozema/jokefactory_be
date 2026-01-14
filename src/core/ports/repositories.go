@@ -29,6 +29,9 @@ type BatchWithJokes struct {
 type MarketItem struct {
 	JokeID       int64
 	JokeText     string
+	// JokeTitle is an optional QC-set title for display in the market.
+	// NULL if QC didn't provide one.
+	JokeTitle    *string
 	TeamID       int64
 	TeamName     string
 	TeamLabel    string

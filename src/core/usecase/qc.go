@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"jokefactory/src/core/domain"
 	"jokefactory/src/core/ports"
@@ -59,6 +60,9 @@ func (s *QCService) Rate(ctx context.Context, userID, batchID int64, ratings []d
 	// Validate tags and feedback requirement for OTHER.
 	requiresFeedback := false
 	for _, r := range ratings {
+		if r.JokeTitle != nil && strings.TrimSpace(*r.JokeTitle) != "" && r.Rating != 5 {
+			return nil, nil, domain.NewValidationError("joke_title", "joke_title can only be provided when rating is 5")
+		}
 		switch r.Tag {
 		case domain.QCTagExcellentStandout, domain.QCTagGenuinelyFunny, domain.QCTagMadeMeSmile,
 			domain.QCTagOriginalIdea, domain.QCTagPoliteSmile, domain.QCTagDidntLand,

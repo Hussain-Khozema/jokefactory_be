@@ -958,6 +958,12 @@ func (r *PostgresRepository) RateBatch(ctx context.Context, batchID int64, qcUse
 		ON CONFLICT (joke_id)
 		DO UPDATE SET rating = EXCLUDED.rating, tag = EXCLUDED.tag, qc_user_id = EXCLUDED.qc_user_id, rated_at = now()
 	`
+	// Optional: QC can set a title for jokes rated 5.
+	const updateJokeTitle = `
+		UPDATE jokes
+		SET joke_title = $2
+		WHERE joke_id = $1 AND batch_id = $3
+	`
 	var passes int
 	var total int
 	for _, rgt := range ratings {
@@ -967,6 +973,11 @@ func (r *PostgresRepository) RateBatch(ctx context.Context, batchID int64, qcUse
 		total += rgt.Rating
 		if rgt.Rating == 5 {
 			passes++
+			if rgt.JokeTitle != nil {
+				if _, err := tx.Exec(ctx, updateJokeTitle, rgt.JokeID, *rgt.JokeTitle, batchID); err != nil {
+					return nil, nil, err
+				}
+			}
 		}
 	}
 
@@ -1167,7 +1178,7 @@ func (r *PostgresRepository) getCustomerBudget(ctx context.Context, roundID, cus
 
 func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID int64) ([]ports.MarketItem, error) {
 	const q = `WITH ` + marketPerformanceLabelCTEs + `
-		SELECT pj.joke_id, j.joke_text, pj.team_id, t.name,
+		SELECT pj.joke_id, j.joke_text, j.joke_title, pj.team_id, t.name,
 			CASE
 				WHEN (SELECT total_published_jokes FROM cfg) < 10 THEN 'LOW PERFORMING'
 				ELSE COALESCE(l.performance_label, 'AVERAGE PERFORMING')
@@ -1201,9 +1212,11 @@ func (r *PostgresRepository) ListMarket(ctx context.Context, roundID, customerID
 	var items []ports.MarketItem
 	for rows.Next() {
 		var item ports.MarketItem
-		if err := rows.Scan(&item.JokeID, &item.JokeText, &item.TeamID, &item.TeamName, &item.TeamLabel, &item.BoughtCount, &item.IsBoughtByMe, &item.TeamProfit, &item.TeamAccepted, &item.TeamSold); err != nil {
+		var title *string
+		if err := rows.Scan(&item.JokeID, &item.JokeText, &title, &item.TeamID, &item.TeamName, &item.TeamLabel, &item.BoughtCount, &item.IsBoughtByMe, &item.TeamProfit, &item.TeamAccepted, &item.TeamSold); err != nil {
 			return nil, err
 		}
+		item.JokeTitle = title
 		items = append(items, item)
 	}
 	return items, nil

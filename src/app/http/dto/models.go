@@ -19,9 +19,10 @@ type RatingsRequest struct {
 
 // RatingEntry holds a single joke rating.
 type RatingEntry struct {
-	JokeID int64  `json:"joke_id" binding:"required"`
-	Rating int    `json:"rating" binding:"required"`
-	Tag    string `json:"tag" binding:"required"`
+	JokeID     int64   `json:"joke_id" binding:"required"`
+	Rating     int     `json:"rating" binding:"required"`
+	Tag        string  `json:"tag" binding:"required"`
+	JokeTitle  *string `json:"joke_title"`
 }
 
 // AssignRequest is used for instructor assign endpoint.

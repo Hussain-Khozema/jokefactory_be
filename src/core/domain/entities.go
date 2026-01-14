@@ -139,6 +139,9 @@ type JokeRating struct {
 	QCUserID int64
 	Rating   int
 	Tag      QCTag
+	// JokeTitle is optionally provided by QC for jokes rated 5.
+	// Stored on the joke record (jokes.joke_title).
+	JokeTitle *string
 	RatedAt  time.Time
 }
 

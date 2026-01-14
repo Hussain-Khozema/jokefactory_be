@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS jokes (
   joke_id     BIGSERIAL PRIMARY KEY,
   batch_id    BIGINT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
   joke_text   TEXT NOT NULL,
+  joke_title  TEXT NULL CHECK (char_length(joke_title) <= 120),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
