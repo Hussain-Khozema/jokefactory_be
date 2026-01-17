@@ -717,10 +717,10 @@ func (r *PostgresRepository) CreateBatch(ctx context.Context, roundID, teamID in
 	}
 
 	const insertSubmissionEvent = `
-		INSERT INTO batch_submission_events (round_id, team_id, batch_id, jokes_count)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO batch_submission_events (round_id, team_id, batch_id, jokes_count, delta)
+		VALUES ($1, $2, $3, $4, $5)
 	`
-	if _, err := tx.Exec(ctx, insertSubmissionEvent, roundID, teamID, batch.ID, len(jokes)); err != nil {
+	if _, err := tx.Exec(ctx, insertSubmissionEvent, roundID, teamID, batch.ID, len(jokes), len(jokes)); err != nil {
 		return nil, err
 	}
 
@@ -1008,6 +1008,16 @@ func (r *PostgresRepository) RateBatch(ctx context.Context, batchID int64, qcUse
 		&updated.ID, &updated.RoundID, &updated.TeamID, &updated.Status, &updated.SubmittedAt, &updated.RatedAt, &updated.AvgScore, &updated.PassesCount, &updated.Feedback, &updated.LockedAt, &updated.CreatedAt,
 	); err != nil {
 		return nil, nil, err
+	}
+
+	if len(ratings) > 0 {
+		const insertRatingEvent = `
+			INSERT INTO batch_submission_events (round_id, team_id, batch_id, jokes_count, delta)
+			VALUES ($1, $2, $3, $4, $5)
+		`
+		if _, err := tx.Exec(ctx, insertRatingEvent, updated.RoundID, updated.TeamID, updated.ID, len(ratings), -len(ratings)); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// Publish jokes with rating 5
@@ -1679,36 +1689,41 @@ func (r *PostgresRepository) GetRoundStatsV2(ctx context.Context, roundID int64)
 		result.SalesOverTime = append(result.SalesOverTime, pnt)
 	}
 
-	// Unrated jokes queue size over time (event at each batch submission)
+	// Unrated jokes queue size over time (submission and rating events)
 	const unratedQ = `
 		WITH events AS (
 			SELECT e.event_id,
 			       e.created_at,
 			       e.team_id,
 			       t.name AS team_name,
+			       e.delta,
 			       ROW_NUMBER() OVER (ORDER BY e.created_at, e.event_id) AS event_idx,
 			       ROW_NUMBER() OVER (PARTITION BY e.team_id ORDER BY e.created_at, e.event_id) AS team_idx
 			FROM batch_submission_events e
 			JOIN teams t ON t.id = e.team_id
 			WHERE e.round_id = $1
+		),
+		queue AS (
+			SELECT e.event_idx,
+			       e.team_idx,
+			       e.created_at,
+			       e.team_id,
+			       e.team_name,
+			       SUM(e.delta) OVER (
+			       	PARTITION BY e.team_id
+			       	ORDER BY e.created_at, e.event_id
+			       	ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+			       ) AS queue_count
+			FROM events e
 		)
-		SELECT e.event_idx,
-		       e.team_idx,
-		       e.created_at,
-		       e.team_id,
-		       e.team_name,
-		       (
-		       	SELECT COUNT(j.joke_id)
-		       	FROM batches b
-		       	JOIN jokes j ON j.batch_id = b.batch_id
-		       	WHERE b.round_id = $1
-		       	  AND b.team_id = e.team_id
-		       	  AND b.submitted_at IS NOT NULL
-		       	  AND b.submitted_at <= e.created_at
-		       	  AND (b.rated_at IS NULL OR b.rated_at > e.created_at)
-		       ) AS queue_count
-		FROM events e
-		ORDER BY e.event_idx
+		SELECT event_idx,
+		       team_idx,
+		       created_at,
+		       team_id,
+		       team_name,
+		       queue_count
+		FROM queue
+		ORDER BY event_idx
 	`
 	unratedRows, err := r.pool.Query(ctx, unratedQ, roundID)
 	if err != nil {

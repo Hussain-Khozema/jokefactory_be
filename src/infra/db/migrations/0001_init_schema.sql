@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS batch_submission_events (
   team_id           BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   batch_id          BIGINT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
   jokes_count       INT NOT NULL CHECK (jokes_count >= 0),
+  delta             INT NOT NULL,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
