@@ -2,7 +2,7 @@ package domain
 
 // DefaultInstructorCustomerBudget is the default budget for customers when an instructor
 // seeds/configures rounds (used by admin login and ResetGame).
-const DefaultInstructorCustomerBudget = 20
+const DefaultInstructorCustomerBudget = 10
 
 // DefaultInstructorBatchSize is the default batch size when an instructor seeds/configures rounds.
 const DefaultInstructorBatchSize = 5
