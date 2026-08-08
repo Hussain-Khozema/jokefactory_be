@@ -49,4 +49,3 @@ func Recovery(log *slog.Logger) gin.HandlerFunc {
 		c.Next()
 	}
 }
-

@@ -9,11 +9,11 @@ import (
 
 // AdminAuthService handles instructor login via admin password.
 type AdminAuthService struct {
-	repo          ports.GameRepository
+	repo          ports.Store
 	adminPassword string
 }
 
-func NewAdminAuthService(repo ports.GameRepository, adminPassword string) *AdminAuthService {
+func NewAdminAuthService(repo ports.Store, adminPassword string) *AdminAuthService {
 	return &AdminAuthService{repo: repo, adminPassword: adminPassword}
 }
 
@@ -53,18 +53,18 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 	if err != nil {
 		return nil, err
 	}
+	defaults := domain.DefaultRoundConfig()
 	if round == nil || round.RoundNumber < 2 {
 		// Ensure round 1 exists
 		if round == nil {
-			roundID := int64(1)
-			r1, err := s.repo.InsertRoundConfig(ctx, roundID, domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultMarketPrice, domain.DefaultCostOfPublishing)
+			r1, err := s.repo.InsertRoundConfig(ctx, 1, &defaults)
 			if err != nil {
 				return nil, err
 			}
 			round = r1 // keep round 1 in the response for compatibility
 		}
 		// Ensure round 2 exists
-		if _, err := s.repo.InsertRoundConfig(ctx, int64(2), domain.DefaultInstructorCustomerBudget, domain.DefaultInstructorBatchSize, domain.DefaultMarketPrice, domain.DefaultCostOfPublishing); err != nil {
+		if _, err := s.repo.InsertRoundConfig(ctx, 2, &defaults); err != nil {
 			return nil, err
 		}
 	}

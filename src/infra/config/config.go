@@ -24,6 +24,32 @@ type Config struct {
 
 	// Admin configuration
 	Admin AdminConfig
+
+	// LLM / Azure AI Foundry configuration
+	LLM LLMConfig
+}
+
+// LLMConfig holds Azure AI Foundry (OpenAI-compatible) settings.
+type LLMConfig struct {
+	// BaseURL is the Foundry /openai/v1/ endpoint.
+	BaseURL string `envconfig:"LLM_BASE_URL" default:""`
+
+	// APIKey authenticates to Foundry.
+	APIKey string `envconfig:"LLM_API_KEY" default:""`
+
+	// Deployment is the model deployment name (e.g. gpt-4o-mini).
+	Deployment string `envconfig:"LLM_DEPLOYMENT" default:"gpt-4o-mini"`
+
+	// Temperature for classification (default 0 for determinism).
+	Temperature float64 `envconfig:"LLM_TEMPERATURE" default:"0"`
+
+	// MaxRetries is how many times the Azure adapter retries a failed call.
+	MaxRetries int `envconfig:"LLM_MAX_RETRIES" default:"3"`
+}
+
+// Enabled reports whether LLM credentials are configured.
+func (c LLMConfig) Enabled() bool {
+	return c.BaseURL != "" && c.APIKey != ""
 }
 
 // ServerConfig holds HTTP server settings.
@@ -120,6 +146,9 @@ func Load() (*Config, error) {
 	}
 	if err := envconfig.Process("APP", &cfg.Admin); err != nil {
 		return nil, fmt.Errorf("failed to load admin config: %w", err)
+	}
+	if err := envconfig.Process("APP", &cfg.LLM); err != nil {
+		return nil, fmt.Errorf("failed to load LLM config: %w", err)
 	}
 
 	return &cfg, nil

@@ -1,248 +1,177 @@
-# JokeFactory API
+# Joke Factory API
 
-A Go HTTP API server built with Gin, following clean architecture principles.
+Backend for the Joke Factory classroom simulation. Students write jokes (JM),
+Marketing titles and publishes them, an LLM classifies published jokes, and
+simulated AI customers buy/swap based on fit to a hidden ideal profile.
 
-## Architecture Overview
+## Architecture
 
-This project follows a **clean architecture-inspired** layered structure that separates concerns and enforces dependency rules:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        HTTP Clients                          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     src/app (HTTP Layer)                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Server    │  │  Handlers   │  │     Middleware      │  │
-│  │  (router)   │  │   (DTOs)    │  │  (request-id, log)  │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   src/core (Business Logic)                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Domain    │  │    Ports    │  │      Use Cases      │  │
-│  │ (entities)  │  │(interfaces) │  │    (services)       │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 src/infra (Infrastructure)                   │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Config    │  │   Logger    │  │     Database        │  │
-│  │   (env)     │  │   (slog)    │  │    (postgres)       │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │              Repositories (port implementations)         ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Dependency Rules
-
-- **src/app** → depends on → **src/core** and **src/infra**
-- **src/core** → depends on → nothing (pure Go, no external deps)
-- **src/infra** → depends on → **src/core** (implements ports)
-
-## Folder Structure
+Hexagonal (ports & adapters) layout:
 
 ```
-.
-├── main.go                 # Application entry point
-├── go.mod                  # Go module definition
-├── Makefile                # Build and dev tasks
-├── Dockerfile              # Multi-stage Docker build
-├── docker-compose.yml      # Local development stack
-├── .golangci.yml           # Linter configuration
-├── .editorconfig           # Editor settings
-└── src/
-    ├── app/                # HTTP/Application layer
-    │   ├── server/         # HTTP server bootstrap, router setup
-    │   ├── http/           # HTTP handlers and DTOs
-    │   │   ├── handler/    # Request handlers
-    │   │   ├── dto/        # Request/Response objects
-    │   │   └── response/   # Response helpers
-    │   └── middleware/     # HTTP middleware
-    │
-    ├── core/               # Business/Domain layer
-    │   ├── domain/         # Entities, value objects, domain errors
-    │   ├── ports/          # Interfaces for repositories/services
-    │   └── usecase/        # Business logic orchestration
-    │
-    └── infra/              # Infrastructure layer
-        ├── config/         # Environment configuration
-        ├── logger/         # Logging setup (slog)
-        ├── db/             # Database connection
-        └── repo/           # Repository implementations
+src/
+  app/                 # HTTP layer
+    server/            # router, DI, lifecycle
+    http/{handler,dto,response}/
+    middleware/
+  core/                # business logic (no I/O)
+    domain/            # entities, enums, errors
+      scoring/         # pure 3-tier fit + length classifier
+    ports/             # repository, classifier, dispatcher interfaces
+    usecase/           # session, instructor, batch, marketing,
+                       # classification, aicustomer, feedback, stats
+  infra/
+    config/ logger/
+    db/                # postgres pool + migrations + WithTx
+    repo/postgres/     # one file per aggregate
+    llm/               # Azure Foundry classifier (+ stub)
+    worker/            # in-memory dispatcher + reconciler
 ```
 
-## Getting Started
+- **Core** depends on nothing external.
+- **Infra** implements ports.
+- **App** wires HTTP → usecases → ports.
 
-### Prerequisites
+## Game flow
 
-- Go 1.23+
-- Docker and Docker Compose (optional, for containerized development)
-- Make (optional, for convenience)
+1. Students join; instructor assigns JM + Marketing per team and configures the round (including hidden `ideal_profile`).
+2. Instructor starts the round → AI customers generated with personal buy thresholds.
+3. JM submits batches; Marketing claims, titles, publishes/discards.
+4. Published batches are classified asynchronously (Length in code + LLM for 11 dims).
+5. Fit is materialized; AI customers buy/swap against `true_fit`.
+6. Teams poll feedback (curated Good/Improve dims) and summary; instructor polls leaderboard stats.
 
-### Run Locally
+## API (base `/v1`)
 
-```bash
-# Install dependencies
-go mod download
+Identity: student routes use `X-User-Id`. Instructor routes require instructor auth.
 
-# Run the server
-go run .
+| Method | Path | Notes |
+|--------|------|-------|
+| POST | `/session/join` | Join lobby |
+| GET | `/session/me` | Current user |
+| POST | `/instructor/login` | Instructor auth |
+| GET | `/rounds/active` | Public round list (hides engine knobs) |
+| POST | `/rounds/{id}/batches` | JM submit |
+| GET | `/rounds/{id}/teams/{tid}/batches` | Team batches |
+| GET | `/rounds/{id}/teams/{tid}/summary` | Team card |
+| GET | `/rounds/{id}/teams/{tid}/feedback` | Curated dim feedback |
+| GET | `/rounds/{id}/market` | Published jokes + sold counts |
+| GET | `/marketing/queue/next` | Claim next batch |
+| POST | `/marketing/batches/{id}/publish` | Publish/discard |
+| GET | `/marketing/queue/count` | Queue depth |
+| GET | `/instructor/rounds/{id}/lobby` | Lobby snapshot |
+| POST | `/instructor/rounds/{id}/config` | Round params + ideal profile |
+| POST | `/instructor/rounds/{id}/assign` | Assign teams |
+| PATCH/DELETE | `/instructor/rounds/{id}/users/{uid}` | Manage users |
+| POST | `/instructor/rounds/{id}/start` \| `/end` \| `/popups` | Lifecycle |
+| GET | `/instructor/rounds/{id}/stats` | Leaderboard |
+| POST | `/admin/reset` | Wipe game state |
+| GET | `/health` \| `/health/detailed` | Health checks |
 
-# Or use Make
-make run
-```
-
-The server starts on `http://localhost:8080` by default.
-
-### Run with Docker
-
-```bash
-# Build and start all services
-make docker-up
-
-# View logs
-make docker-logs
-
-# Stop services
-make docker-down
-```
-
-### Verify It Works
-
-```bash
-# Health check
-curl http://localhost:8080/health
-# {"status":"ok"}
-
-# Detailed health (includes component status)
-curl http://localhost:8080/health/detailed
-```
+Errors: `{ "error": { "code", "message", "request_id" } }`.
 
 ## Configuration
 
-Configuration is loaded from environment variables with the `APP_` prefix:
+All env vars use the `APP_` prefix.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_PORT` | `8080` | HTTP server port |
-| `APP_HOST` | `0.0.0.0` | HTTP server host |
-| `APP_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
-| `APP_LOG_FORMAT` | `json` | Log format (json, text) |
-| `APP_READ_TIMEOUT` | `10s` | HTTP read timeout |
-| `APP_WRITE_TIMEOUT` | `30s` | HTTP write timeout |
-| `APP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
-| `APP_DB_HOST` | `localhost` | PostgreSQL host |
-| `APP_DB_PORT` | `5432` | PostgreSQL port |
-| `APP_DB_USER` | `postgres` | PostgreSQL user |
-| `APP_DB_PASSWORD` | `postgres` | PostgreSQL password |
-| `APP_DB_NAME` | `jokefactory` | PostgreSQL database |
-| `APP_DB_SSLMODE` | `disable` | PostgreSQL SSL mode |
+| `APP_PORT` | `8080` | HTTP port |
+| `APP_HOST` | `0.0.0.0` | Bind host |
+| `APP_LOG_LEVEL` | `info` | debug/info/warn/error |
+| `APP_LOG_FORMAT` | `json` | json/text |
+| `APP_ADMIN_PASSWORD` | (set in env) | Instructor login |
+| `APP_DB_HOST` | `localhost` | Postgres host |
+| `APP_DB_PORT` | `5432` | Postgres port |
+| `APP_DB_USER` | `postgres` | DB user |
+| `APP_DB_PASSWORD` | `postgres` | DB password |
+| `APP_DB_NAME` | `jokefactory` | Database name |
+| `APP_DB_SSLMODE` | `disable` | Use `require` on Azure |
+| `APP_LLM_BASE_URL` | _(empty)_ | Foundry `/openai/v1/` endpoint |
+| `APP_LLM_API_KEY` | _(empty)_ | Foundry API key |
+| `APP_LLM_DEPLOYMENT` | `gpt-4o-mini` | Deployment name |
+| `APP_LLM_TEMPERATURE` | `0` | Sampling temperature |
+| `APP_LLM_MAX_RETRIES` | `3` | Classifier retries |
 
-## Development
+When `APP_LLM_BASE_URL` / `APP_LLM_API_KEY` are unset, the **stub classifier** is used (local/dev).
 
-### Available Make Targets
+## Local development
 
 ```bash
-make help         # Show all targets
-make run          # Run the application
-make build        # Build binary
-make test         # Run tests
-make lint         # Run linter
-make fmt          # Format code
-make tidy         # Tidy go.mod
-make verify       # Run all checks (fmt, lint, test)
-make clean        # Remove build artifacts
-make docker-up    # Start Docker services
-make docker-down  # Stop Docker services
+# Dependencies
+go mod download
+
+# Postgres (sslmode=disable)
+docker compose up -d   # or: make docker-up
+make migrate-up
+
+# Run API
+make run
+# → http://localhost:8080
+
+# Checks
+make verify   # fmt + lint + tests
 ```
 
-### Adding a New Endpoint
+## Migrations
 
-1. **Define domain entity** in `src/core/domain/`
-2. **Define repository interface** in `src/core/ports/`
-3. **Implement repository** in `src/infra/repo/`
-4. **Create use case** in `src/core/usecase/`
-5. **Add DTOs** in `src/app/http/dto/`
-6. **Create handler** in `src/app/http/handler/`
-7. **Register route** in `src/app/server/server.go`
-8. **Wire dependencies** in `main.go`
+Goose SQL schema lives in a single file:
 
-### Example: Adding a Jokes Endpoint
+`src/infra/db/migrations/0001_schema.sql`
 
-```go
-// 1. src/core/domain/joke.go
-type Joke struct {
-    ID      uuid.UUID
-    Content string
-}
+Fresh deploy: point goose at an empty Postgres database and run:
 
-// 2. src/core/ports/repositories.go
-type JokeRepository interface {
-    Create(ctx context.Context, joke *domain.Joke) error
-    FindByID(ctx context.Context, id uuid.UUID) (*domain.Joke, error)
-}
-
-// 3. src/infra/repo/joke_repo.go
-type JokeRepository struct { ... }
-func (r *JokeRepository) Create(...) error { ... }
-
-// 4. src/core/usecase/joke_service.go
-type JokeService struct { jokeRepo ports.JokeRepository }
-func (s *JokeService) CreateJoke(...) (*domain.Joke, error) { ... }
-
-// 5-6. Add handler and DTOs
-
-// 7. src/app/server/server.go - register routes
-jokes := v1.Group("/jokes")
-jokes.POST("", s.jokeHandler.Create)
-
-// 8. main.go - wire dependencies
-jokeRepo := repo.NewJokeRepository(db, log)
-jokeService := usecase.NewJokeService(jokeRepo, log)
+```bash
+make migrate-up
+make migrate-status
 ```
 
+To wipe and recreate locally: drop/recreate the DB (or `make migrate-down`), then `migrate-up` again.
 ## Testing
 
 ```bash
-# Run all tests
 make test
-
-# Run with coverage
-make coverage
-
-# Run short tests only (skip integration)
-make test-short
+make verify
 ```
 
-## Why These Choices?
+Phase flow tests live under `src/core/usecase/` (`phase3`…`phase10_e2e`). Scoring unit tests are in `src/core/domain/scoring/`.
 
-### slog over zap
-- Part of Go standard library (1.21+)
-- Zero external dependencies
-- Idiomatic for new Go projects
-- Comparable performance for most use cases
+## Azure deployment
 
-### Gin as HTTP router
-- Battle-tested, widely adopted
-- Good performance
-- Rich middleware ecosystem
-- Excellent documentation
+Target stack (see `REFACTOR_PLAN.md` Appendix C):
 
-### pgx over database/sql
-- Native PostgreSQL driver (no CGO)
-- Better performance
-- First-class support for PostgreSQL types
-- Connection pooling built-in
+- **Azure Container Apps** (pin `min=max=1` — in-memory queue/workers)
+- **Azure Database for PostgreSQL Flexible Server** (`APP_DB_SSLMODE=require`)
+- **Azure AI Foundry** (`gpt-4o-mini`)
+- **ACR** + **Key Vault** for image/secrets
+
+Provision with the `az` CLI sketch in Appendix C, then:
+
+1. Set env vars / Key Vault secret refs on the Container App.
+2. `make migrate-up` against the Azure DSN.
+3. Build/push image (`az acr build` or GitHub Actions).
+4. Smoke `/health` and a full classroom flow.
+
+> Horizontal scale later requires replacing the in-memory dispatcher with a shared broker; the reconciler covers restarts today.
+
+## Make targets
+
+```bash
+make help          # list targets
+make run build test lint fmt verify
+make migrate-up migrate-down migrate-status
+make docker-up docker-down
+make deploy        # az acr build + update Container App (needs az login)
+```
+
+## CI / CD
+
+- **PRs:** `.github/workflows/verify.yml` runs `make verify`.
+- **Local deploy:** `make deploy` (or `SKIP_VERIFY=1 make deploy` after `az login`).
+- **Push to `main`:** `.github/workflows/deploy.yml` (needs GitHub OIDC setup).
+
+One-time GitHub Actions OIDC setup: see [`docs/GITHUB_DEPLOY.md`](docs/GITHUB_DEPLOY.md).
 
 ## License
 
-See [LICENSE](LICENSE) file.
+See [LICENSE](LICENSE) if present.

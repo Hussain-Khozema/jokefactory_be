@@ -128,4 +128,3 @@ func IsUnauthorized(err error) bool {
 // TODO: Add domain entities (e.g., Joke, User, Category)
 // TODO: Add value objects (e.g., JokeID, UserID)
 // TODO: Add domain events if using event-driven patterns
-

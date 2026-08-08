@@ -6,12 +6,17 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
 
 	"jokefactory/src/app/server"
+	"jokefactory/src/core/ports"
+	"jokefactory/src/core/usecase"
 	"jokefactory/src/infra/config"
 	"jokefactory/src/infra/db"
+	"jokefactory/src/infra/llm"
 	"jokefactory/src/infra/logger"
-	"jokefactory/src/infra/repo"
+	"jokefactory/src/infra/repo/postgres"
+	"jokefactory/src/infra/worker"
 )
 
 func main() {
@@ -22,33 +27,45 @@ func main() {
 }
 
 func run() error {
-	// Load configuration from environment variables
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	// Initialize logger
 	log := logger.New(cfg.Log)
 	log.Info("starting application",
 		"port", cfg.Server.Port,
 		"log_level", cfg.Log.Level,
 	)
 
-	// Initialize database connection
 	pg, err := db.New(context.Background(), cfg.Database, log)
 	if err != nil {
 		return err
 	}
 	defer pg.Close()
 
-	// Initialize repositories
-	gameRepo := repo.NewPostgresRepository(pg, log)
+	gameRepo := postgres.New(pg, log)
 
-	// Create and run HTTP server
-	srv := server.New(cfg, log, gameRepo)
+	classifier, modelName := buildClassifier(cfg)
+	aiCustomers := usecase.NewAICustomerService(gameRepo, nil, log)
+	classSvc := usecase.NewClassificationService(gameRepo, classifier, aiCustomers, modelName, log)
+	dispatcher := worker.NewDispatcher(classSvc, worker.DefaultDispatcherConfig(), log)
+	reconciler := worker.NewReconciler(gameRepo, dispatcher, time.Minute, log)
 
-	// Run blocks until shutdown signal is received
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dispatcher.Start(ctx)
+	reconciler.Start(ctx)
+	defer dispatcher.Stop()
+	defer reconciler.Stop()
+
+	srv := server.New(cfg, log, gameRepo, dispatcher, aiCustomers)
 	return srv.Run()
 }
 
+func buildClassifier(cfg *config.Config) (c ports.Classifier, model string) {
+	if cfg.LLM.Enabled() {
+		return llm.NewAzureClassifier(cfg.LLM), cfg.LLM.Deployment
+	}
+	return llm.StubClassifier{}, "stub"
+}

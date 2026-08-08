@@ -160,4 +160,3 @@ func FromDomainError(c *gin.Context, err error, requestID string) {
 		InternalError(c, requestID)
 	}
 }
-

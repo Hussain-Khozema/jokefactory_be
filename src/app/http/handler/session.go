@@ -111,4 +111,3 @@ func parseUserID(c *gin.Context) (int64, bool) {
 	}
 	return id, true
 }
-

@@ -2,64 +2,12 @@ package domain
 
 import "time"
 
-// Role represents a user's role in the game.
-type Role string
-
-const (
-	RoleInstructor Role = "INSTRUCTOR"
-	RoleJM         Role = "JM"
-	RoleQC         Role = "QC"
-	RoleCustomer   Role = "CUSTOMER"
-)
-
-// QCTag represents the single tag assigned per joke by QC.
-type QCTag string
-
-const (
-	QCTagExcellentStandout QCTag = "EXCELLENT_STANDOUT"
-	QCTagGenuinelyFunny    QCTag = "GENUINELY_FUNNY"
-	QCTagMadeMeSmile       QCTag = "MADE_ME_SMILE"
-	QCTagOriginalIdea      QCTag = "ORIGINAL_IDEA"
-	QCTagPoliteSmile       QCTag = "POLITE_SMILE"
-	QCTagDidntLand         QCTag = "DIDNT_LAND"
-	QCTagNotAcceptable     QCTag = "NOT_ACCEPTABLE"
-	QCTagOther             QCTag = "OTHER"
-)
-
-// ParticipantStatus indicates lobby assignment state.
-type ParticipantStatus string
-
-const (
-	ParticipantWaiting  ParticipantStatus = "WAITING"
-	ParticipantAssigned ParticipantStatus = "ASSIGNED"
-)
-
-// RoundStatus represents lifecycle of a round.
-type RoundStatus string
-
-const (
-	RoundConfigured RoundStatus = "CONFIGURED"
-	RoundActive     RoundStatus = "ACTIVE"
-	RoundEnded      RoundStatus = "ENDED"
-)
-
-// BatchStatus represents lifecycle of a batch.
-type BatchStatus string
-
-const (
-	BatchDraft     BatchStatus = "DRAFT"
-	BatchSubmitted BatchStatus = "SUBMITTED"
-	BatchRated     BatchStatus = "RATED"
-)
-
-// Team represents a team.
 type Team struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// User represents a player.
 type User struct {
 	ID          int64
 	DisplayName string
@@ -71,109 +19,80 @@ type User struct {
 	CreatedAt   time.Time
 }
 
-// Round represents a game session.
 type Round struct {
-	ID               int64
-	RoundNumber      int
-	Status           RoundStatus
-	CustomerBudget   int
-	BatchSize        int
-	MarketPrice      float64
-	CostOfPublishing float64
-	StartedAt        *time.Time
-	EndedAt          *time.Time
-	CreatedAt        time.Time
-	IsPoppedActive   bool
+	ID                    int64
+	RoundNumber           int
+	Status                RoundStatus
+	CustomerBudget        float64
+	BatchSize             int
+	MarketPrice           float64
+	CostOfPublishing      float64
+	CostOfDiscard         float64
+	CustomerCount         int
+	BuyThreshold          float64
+	Jitter                float64
+	SwapMargin            float64
+	FeedbackJokeCount     int
+	FeedbackPassThreshold float64
+	StartedAt             *time.Time
+	EndedAt               *time.Time
+	CreatedAt             time.Time
+	IsPoppedActive        bool
 }
 
-// TeamRoundState tracks per-team stats for a round.
 type TeamRoundState struct {
-	RoundID        int64
-	TeamID         int64
-	PointsEarned   int
-	BatchesCreated int
-	BatchesRated   int
-	AcceptedJokes  int
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	RoundID          int64
+	TeamID           int64
+	PointsEarned     int
+	BatchesCreated   int
+	BatchesProcessed int
+	PublishedJokes   int
+	DiscardedJokes   int
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-// Batch represents a submission from a team.
 type Batch struct {
 	ID          int64
 	RoundID     int64
 	TeamID      int64
 	Status      BatchStatus
 	SubmittedAt *time.Time
-	RatedAt     *time.Time
-	AvgScore    *float64
-	PassesCount *int
-	Feedback    *string
+	ProcessedAt *time.Time
 	LockedAt    *time.Time
+	LockedBy    *int64
 	CreatedAt   time.Time
-	TagSummary  []TagCount
 	Jokes       []Joke
 }
 
-// Joke represents a joke in a batch.
 type Joke struct {
-	ID        int64
-	BatchID   int64
-	Text      string
-	CreatedAt time.Time
-	// IsPublished indicates whether this joke is published (accepted by QC).
-	// In this game, a joke is considered published if it was rated 5 by QC
-	// (i.e. it exists in published_jokes). Populated only in specific read paths.
-	IsPublished bool
-	// IsBought indicates whether this joke currently has at least one active purchase.
-	// This is populated only in specific read paths (e.g. team batches list).
-	IsBought bool
-	// SoldCount is the number of current active purchases for this joke (current sales).
-	// If a purchase is returned, it no longer counts. This is populated only in specific read paths.
-	SoldCount int
+	ID            int64
+	BatchID       int64
+	Text          string
+	Title         *string
+	PublishStatus PublishStatus
+	PublishedAt   *time.Time
+	CreatedAt     time.Time
+	SoldCount     int
 }
 
-// JokeRating represents QC rating.
-type JokeRating struct {
-	JokeID   int64
-	QCUserID int64
-	Rating   int
-	Tag      QCTag
-	// JokeTitle is optionally provided by QC for jokes rated 5.
-	// Stored on the joke record (jokes.joke_title).
-	JokeTitle *string
-	RatedAt  time.Time
+// AICustomer is a simulated buyer for a round.
+type AICustomer struct {
+	ID                int64
+	RoundID           int64
+	PersonalThreshold float64
+	StartingBudget    float64
+	RemainingBudget   float64
+	CreatedAt         time.Time
 }
 
-// TagCount aggregates tag counts per batch.
-type TagCount struct {
-	Tag   QCTag
-	Count int
-}
-
-// PublishedJoke represents a joke published to market.
-type PublishedJoke struct {
-	JokeID    int64
-	RoundID   int64
-	TeamID    int64
-	CreatedAt time.Time
-}
-
-// CustomerRoundBudget tracks a customer's budget for a round.
-type CustomerRoundBudget struct {
-	RoundID         int64
-	CustomerUserID  int64
-	StartingBudget  float64
-	RemainingBudget float64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-}
-
-// Purchase represents a purchase of a joke.
+// Purchase is one AI customer's holding of a published joke.
 type Purchase struct {
-	ID             int64
-	RoundID        int64
-	CustomerUserID int64
-	JokeID         int64
-	CreatedAt      time.Time
+	ID           int64
+	RoundID      int64
+	AICustomerID int64
+	JokeID       int64
+	TeamID       int64
+	Price        float64
+	CreatedAt    time.Time
 }

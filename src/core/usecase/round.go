@@ -10,12 +10,13 @@ import (
 
 // RoundService handles round-level queries.
 type RoundService struct {
-	repo ports.GameRepository
-	log  *slog.Logger
+	repo  ports.Store
+	stats *StatsService
+	log   *slog.Logger
 }
 
-func NewRoundService(repo ports.GameRepository, log *slog.Logger) *RoundService {
-	return &RoundService{repo: repo, log: log}
+func NewRoundService(repo ports.Store, log *slog.Logger) *RoundService {
+	return &RoundService{repo: repo, stats: NewStatsService(repo, log), log: log}
 }
 
 // Active returns the active round, if any.
@@ -30,6 +31,5 @@ func (s *RoundService) List(ctx context.Context) ([]domain.Round, error) {
 
 // TeamSummary returns stats for a team in a round.
 func (s *RoundService) TeamSummary(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
-	return s.repo.GetTeamSummary(ctx, roundID, teamID)
+	return s.stats.GetTeamSummary(ctx, roundID, teamID)
 }
-

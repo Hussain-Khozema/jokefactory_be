@@ -4,4 +4,3 @@ package dto
 type PopupStateRequest struct {
 	IsPoppedActive *bool `json:"is_popped_active" binding:"required"`
 }
-

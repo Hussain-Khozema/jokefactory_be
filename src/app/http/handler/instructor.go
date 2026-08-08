@@ -41,15 +41,51 @@ func (h *InstructorHandler) Config(c *gin.Context) {
 		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
 		return
 	}
-	// We ignore budget/batch here; they will be provided when starting the round.
-	round, err := h.instructorService.InsertConfig(c.Request.Context(), roundID, 0, 1, 1, 0.1)
-	if err != nil {
-		// Inline log to help diagnose server errors in lower layers
-		c.Error(err) // recorded in Gin context; already gets logged by middleware
+
+	var req dto.ConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid payload", middleware.GetRequestID(c))
+		return
+	}
+
+	base := domain.DefaultRoundConfig()
+	existing, err := h.instructorService.GetRound(c.Request.Context(), roundID)
+	if err == nil {
+		base = domain.ConfigFromRound(existing)
+	} else if !domain.IsNotFound(err) {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	response.OK(c, gin.H{"round": round})
+
+	cfg := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{
+		CustomerBudget:        req.CustomerBudget,
+		BatchSize:             req.BatchSize,
+		MarketPrice:           req.MarketPrice,
+		CostOfPublishing:      req.CostOfPublishing,
+		CostOfDiscard:         req.CostOfDiscard,
+		CustomerCount:         req.CustomerCount,
+		BuyThreshold:          req.BuyThreshold,
+		Jitter:                req.Jitter,
+		SwapMargin:            req.SwapMargin,
+		FeedbackJokeCount:     req.FeedbackJokeCount,
+		FeedbackPassThreshold: req.FeedbackPassThreshold,
+	})
+
+	result, err := h.instructorService.Config(
+		c.Request.Context(),
+		roundID,
+		&cfg,
+		dto.IdealProfileToDomain(req.IdealProfile),
+	)
+	if err != nil {
+		_ = c.Error(err)
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+
+	response.OK(c, gin.H{
+		"round": dto.ToInstructorRound(result.Round, result.IdealProfile),
+	})
 }
 
 func (h *InstructorHandler) Assign(c *gin.Context) {
@@ -63,7 +99,7 @@ func (h *InstructorHandler) Assign(c *gin.Context) {
 		response.BadRequest(c, "invalid payload", middleware.GetRequestID(c))
 		return
 	}
-	lobby, err := h.instructorService.Assign(c.Request.Context(), roundID, req.CustomerCount, req.TeamCount)
+	lobby, err := h.instructorService.Assign(c.Request.Context(), roundID, req.TeamCount)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
@@ -109,33 +145,66 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
 		return
 	}
+
+	// Optional body: if present with fields, merge into config before starting (FE compat).
 	var req dto.ConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	bindErr := c.ShouldBindJSON(&req)
+	if bindErr != nil && c.Request.ContentLength > 0 {
 		response.BadRequest(c, "invalid payload", middleware.GetRequestID(c))
 		return
 	}
-	batchSize := 0
-	switch {
-	case req.BatchSize != nil:
-		batchSize = *req.BatchSize
-	case roundID == 2:
-		existingRound, err := h.instructorService.GetRound(c.Request.Context(), roundID)
-		if err != nil {
+	if bindErr == nil && hasConfigFields(&req) {
+		base := domain.DefaultRoundConfig()
+		existing, err := h.instructorService.GetRound(c.Request.Context(), roundID)
+		if err == nil {
+			base = domain.ConfigFromRound(existing)
+		} else if !domain.IsNotFound(err) {
 			response.FromDomainError(c, err, middleware.GetRequestID(c))
 			return
 		}
-		batchSize = existingRound.BatchSize
-	default:
-		response.BadRequest(c, "batch_size is required for this round", middleware.GetRequestID(c))
-		return
+		cfg := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{
+			CustomerBudget:        req.CustomerBudget,
+			BatchSize:             req.BatchSize,
+			MarketPrice:           req.MarketPrice,
+			CostOfPublishing:      req.CostOfPublishing,
+			CostOfDiscard:         req.CostOfDiscard,
+			CustomerCount:         req.CustomerCount,
+			BuyThreshold:          req.BuyThreshold,
+			Jitter:                req.Jitter,
+			SwapMargin:            req.SwapMargin,
+			FeedbackJokeCount:     req.FeedbackJokeCount,
+			FeedbackPassThreshold: req.FeedbackPassThreshold,
+		})
+		if _, err := h.instructorService.Config(
+			c.Request.Context(), roundID, &cfg, dto.IdealProfileToDomain(req.IdealProfile),
+		); err != nil {
+			response.FromDomainError(c, err, middleware.GetRequestID(c))
+			return
+		}
 	}
 
-	round, err := h.instructorService.StartRoundWithConfig(c.Request.Context(), roundID, req.CustomerBudget, batchSize, req.MarketPrice, req.CostOfPublishing)
+	round, err := h.instructorService.StartRound(c.Request.Context(), roundID)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	response.OK(c, gin.H{"round": round})
+	profile, _ := h.instructorService.GetIdealProfile(c.Request.Context(), roundID)
+	response.OK(c, gin.H{"round": dto.ToInstructorRound(round, profile)})
+}
+
+func hasConfigFields(req *dto.ConfigRequest) bool {
+	return req.CustomerBudget != nil ||
+		req.BatchSize != nil ||
+		req.MarketPrice != nil ||
+		req.CostOfPublishing != nil ||
+		req.CostOfDiscard != nil ||
+		req.CustomerCount != nil ||
+		req.BuyThreshold != nil ||
+		req.Jitter != nil ||
+		req.SwapMargin != nil ||
+		req.FeedbackJokeCount != nil ||
+		req.FeedbackPassThreshold != nil ||
+		req.IdealProfile != nil
 }
 
 func (h *InstructorHandler) EndRound(c *gin.Context) {
@@ -149,7 +218,7 @@ func (h *InstructorHandler) EndRound(c *gin.Context) {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	response.OK(c, gin.H{"round": round})
+	response.OK(c, gin.H{"round": dto.ToPublicRound(round)})
 }
 
 func (h *InstructorHandler) SetPopupState(c *gin.Context) {
@@ -176,18 +245,7 @@ func (h *InstructorHandler) SetPopupState(c *gin.Context) {
 		return
 	}
 
-	response.OK(c, gin.H{"round": gin.H{
-		"id":                   round.ID,
-		"round_number":         round.RoundNumber,
-		"status":               round.Status,
-		"customer_budget":      round.CustomerBudget,
-		"batch_size":           round.BatchSize,
-		"market_price":         round.MarketPrice,
-		"cost_of_publishing":   round.CostOfPublishing,
-		"started_at":           round.StartedAt,
-		"ended_at":             round.EndedAt,
-		"is_popped_active":     round.IsPoppedActive,
-	}})
+	response.OK(c, gin.H{"round": dto.ToPublicRound(round)})
 }
 
 func (h *InstructorHandler) Stats(c *gin.Context) {
@@ -198,19 +256,13 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 	}
 	stats, err := h.instructorService.Stats(c.Request.Context(), roundID)
 	if err != nil {
-		// Attach error for logging middleware; response keeps user-safe message.
-		c.Error(err)
+		_ = c.Error(err)
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
 	response.OK(c, gin.H{
-		"round_id":               stats.RoundID,
-		"leaderboard":            stats.Leaderboard,
-		"rejection_by_team":      stats.RejectionByTeam,
-		"sales_over_time":        stats.SalesOverTime,
-		"unrated_jokes_over_time": stats.UnratedJokesOverTime,
-		"batch_sequence_quality": stats.BatchSequenceQuality,
-		"batch_size_quality":     stats.BatchSizeQuality,
+		"round_id":    stats.RoundID,
+		"leaderboard": stats.Leaderboard,
 	})
 }
 

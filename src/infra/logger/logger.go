@@ -143,4 +143,3 @@ func (h *plainHandler) WithGroup(name string) slog.Handler {
 	_ = name
 	return h
 }
-

@@ -27,21 +27,28 @@ type Server struct {
 	log    *slog.Logger
 	router *gin.Engine
 	http   *http.Server
-	repo   ports.GameRepository
+	repo   ports.Store
 
 	// Handlers
 	healthHandler     *handler.HealthHandler
 	sessionHandler    *handler.SessionHandler
 	roundHandler      *handler.RoundHandler
 	batchHandler      *handler.BatchHandler
-	qcHandler         *handler.QCHandler
+	marketingHandler  *handler.MarketingHandler
 	customerHandler   *handler.CustomerHandler
+	feedbackHandler   *handler.FeedbackHandler
 	instructorHandler *handler.InstructorHandler
 	adminHandler      *handler.AdminHandler
 }
 
 // New creates a new Server with all dependencies wired up.
-func New(cfg *config.Config, log *slog.Logger, repo ports.GameRepository) *Server {
+func New(
+	cfg *config.Config,
+	log *slog.Logger,
+	repo ports.Store,
+	dispatcher ports.ClassificationDispatcher,
+	aiCustomers *usecase.AICustomerService,
+) *Server {
 	// Set Gin mode based on log level
 	if cfg.Log.Level == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -57,9 +64,9 @@ func New(cfg *config.Config, log *slog.Logger, repo ports.GameRepository) *Serve
 	sessionService := usecase.NewSessionService(repo, log)
 	roundService := usecase.NewRoundService(repo, log)
 	batchService := usecase.NewBatchService(repo, log)
-	qcService := usecase.NewQCService(repo, log)
-	customerService := usecase.NewCustomerService(repo, log)
-	instructorService := usecase.NewInstructorService(repo, log)
+	marketingService := usecase.NewMarketingService(repo, dispatcher, log)
+	feedbackService := usecase.NewFeedbackService(repo, log)
+	instructorService := usecase.NewInstructorService(repo, aiCustomers, log)
 	adminService := usecase.NewAdminAuthService(repo, cfg.Admin.AdminPassword)
 
 	// Create handlers
@@ -67,8 +74,9 @@ func New(cfg *config.Config, log *slog.Logger, repo ports.GameRepository) *Serve
 	sessionHandler := handler.NewSessionHandler(sessionService)
 	roundHandler := handler.NewRoundHandler(roundService)
 	batchHandler := handler.NewBatchHandler(batchService)
-	qcHandler := handler.NewQCHandler(qcService)
-	customerHandler := handler.NewCustomerHandler(customerService)
+	marketingHandler := handler.NewMarketingHandler(marketingService)
+	customerHandler := handler.NewCustomerHandler(aiCustomers)
+	feedbackHandler := handler.NewFeedbackHandler(feedbackService)
 	instructorHandler := handler.NewInstructorHandler(instructorService)
 	adminHandler := handler.NewAdminHandler(adminService)
 
@@ -81,8 +89,9 @@ func New(cfg *config.Config, log *slog.Logger, repo ports.GameRepository) *Serve
 		sessionHandler:    sessionHandler,
 		roundHandler:      roundHandler,
 		batchHandler:      batchHandler,
-		qcHandler:         qcHandler,
+		marketingHandler:  marketingHandler,
 		customerHandler:   customerHandler,
+		feedbackHandler:   feedbackHandler,
 		instructorHandler: instructorHandler,
 		adminHandler:      adminHandler,
 	}
@@ -126,21 +135,19 @@ func (s *Server) setupRoutes() {
 		// Rounds
 		v1.GET("/rounds/active", s.roundHandler.Active)
 		v1.GET("/rounds/:round_id/teams/:team_id/summary", s.roundHandler.TeamSummary)
+		v1.GET("/rounds/:round_id/teams/:team_id/feedback", s.feedbackHandler.Get)
 
 		// JM batches
 		v1.POST("/rounds/:round_id/batches", s.batchHandler.Submit)
 		v1.GET("/rounds/:round_id/teams/:team_id/batches", s.batchHandler.List)
 
-		// QC
-		v1.GET("/qc/queue/next", s.qcHandler.QueueNext)
-		v1.POST("/qc/batches/:batch_id/ratings", s.qcHandler.SubmitRatings)
-		v1.GET("/qc/queue/count", s.qcHandler.QueueCount)
+		// Marketing
+		v1.GET("/marketing/queue/next", s.marketingHandler.QueueNext)
+		v1.POST("/marketing/batches/:batch_id/publish", s.marketingHandler.Publish)
+		v1.GET("/marketing/queue/count", s.marketingHandler.QueueCount)
 
-		// Customers
+		// Market (AI customers drive demand)
 		v1.GET("/rounds/:round_id/market", s.customerHandler.Market)
-		v1.GET("/rounds/:round_id/customers/budget", s.customerHandler.Budget)
-		v1.POST("/rounds/:round_id/market/:joke_id/buy", s.customerHandler.Buy)
-		v1.POST("/rounds/:round_id/market/:joke_id/return", s.customerHandler.Return)
 	}
 
 	// Instructor-protected routes

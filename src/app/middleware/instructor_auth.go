@@ -15,7 +15,7 @@ const instructorHeader = "X-User-Id"
 // InstructorAuth enforces that the incoming request is made by an instructor.
 // It reads the X-User-Id header, validates the user exists, and checks the role.
 // On success it stores the user ID in the context under the key "user_id".
-func InstructorAuth(repo ports.GameRepository) gin.HandlerFunc {
+func InstructorAuth(repo ports.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := GetRequestID(c)
 

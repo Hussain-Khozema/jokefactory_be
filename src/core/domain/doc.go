@@ -39,4 +39,3 @@
 // TODO: Define value objects
 // TODO: Add entity validation methods
 package domain
-

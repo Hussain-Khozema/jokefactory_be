@@ -24,7 +24,7 @@ func NewHealthService(log *slog.Logger) *HealthService {
 
 // HealthStatus represents the health of the application.
 type HealthStatus struct {
-	Status     string                    `json:"status"`
+	Status     string                     `json:"status"`
 	Components map[string]ComponentHealth `json:"components,omitempty"`
 }
 
@@ -82,4 +82,3 @@ type healthError struct {
 func (e *healthError) Error() string {
 	return "health check failed: " + e.status
 }
-

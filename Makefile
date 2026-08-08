@@ -1,7 +1,7 @@
 # Makefile for JokeFactory API
 # Run 'make help' to see available targets
 
-.PHONY: help run build test lint fmt tidy clean docker-build docker-up docker-down migrate-up migrate-down migrate-status migrate-create
+.PHONY: help run build test lint fmt tidy clean docker-build docker-up docker-down migrate-up migrate-down migrate-status migrate-create deploy
 
 # Default target
 .DEFAULT_GOAL := help
@@ -12,6 +12,9 @@ GOBUILD=$(GOCMD) build
 GOTEST=$(GOCMD) test
 GOFMT=gofmt
 GOMOD=$(GOCMD) mod
+
+# All first-party Go files (excludes the vendored dependencies)
+GOFILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
 
 # Binary name
 BINARY_NAME=jokefactory
@@ -26,7 +29,8 @@ help: ## Show this help message
 	@echo 'Targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-run: ## Run the application locally
+run: ## Run the application locally (loads .env if present)
+	@if [ -f .env ]; then set -a && . ./.env && set +a; fi; \
 	$(GOCMD) run .
 
 build: ## Build the application binary
@@ -43,23 +47,56 @@ coverage: test ## Run tests and show coverage report
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
-lint: ## Run golangci-lint
-	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	golangci-lint run ./...
+# Base git ref used to grandfather pre-existing lint issues: only issues
+# introduced relative to this ref's merge-base fail the build. Existing debt is
+# cleaned up as each aggregate is rewritten in later refactor phases.
+# CI overrides this to origin/main.
+LINT_BASE_REF ?= main
+GOBIN_DIR=$(shell go env GOPATH)/bin
 
-lint-fix: ## Run golangci-lint with auto-fix
-	golangci-lint run --fix ./...
+lint: ## Run golangci-lint (only new issues vs LINT_BASE_REF)
+	@command -v golangci-lint > /dev/null 2>&1 || test -x $(GOBIN_DIR)/golangci-lint || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)
+	@PATH="$(GOBIN_DIR):$$PATH" golangci-lint run --new-from-merge-base=$(LINT_BASE_REF) ./...
+
+lint-all: ## Run golangci-lint across the whole codebase (includes pre-existing debt)
+	@PATH="$(GOBIN_DIR):$$PATH" golangci-lint run ./...
+
+lint-fix: ## Run golangci-lint with auto-fix (only new issues vs LINT_BASE_REF)
+	@PATH="$(GOBIN_DIR):$$PATH" golangci-lint run --fix --new-from-merge-base=$(LINT_BASE_REF) ./...
 
 fmt: ## Format code
-	$(GOFMT) -s -w .
+	$(GOFMT) -s -w $(GOFILES)
 
 fmt-check: ## Check code formatting
-	@test -z "$$($(GOFMT) -l .)" || (echo "Code is not formatted. Run 'make fmt'" && exit 1)
+	@test -z "$$($(GOFMT) -l $(GOFILES))" || (echo "Code is not formatted. Run 'make fmt'" && exit 1)
 
 tidy: ## Tidy go.mod and go.sum
 	$(GOMOD) tidy
 
 verify: fmt-check lint test ## Run all verification steps (format check, lint, test)
+
+# Azure deploy (requires: az login with Contributor on the resource group)
+AZURE_RESOURCE_GROUP ?= ai-joke-factory
+ACR_NAME ?= aijokefactoryacr
+CONTAINER_APP_NAME ?= jokefactory-api
+IMAGE_NAME ?= jokefactory
+IMAGE_TAG ?= $(shell git rev-parse HEAD)
+
+deploy: ## Build in ACR and update Container App (SKIP_VERIFY=1 to skip make verify)
+	@if [ "$(SKIP_VERIFY)" != "1" ]; then $(MAKE) verify; fi
+	@echo "Building $(IMAGE_NAME):$(IMAGE_TAG) in ACR $(ACR_NAME)..."
+	az acr build \
+		-r "$(ACR_NAME)" \
+		-g "$(AZURE_RESOURCE_GROUP)" \
+		-t "$(IMAGE_NAME):$(IMAGE_TAG)" \
+		-t "$(IMAGE_NAME):latest" \
+		.
+	@echo "Updating Container App $(CONTAINER_APP_NAME)..."
+	az containerapp update \
+		-g "$(AZURE_RESOURCE_GROUP)" \
+		-n "$(CONTAINER_APP_NAME)" \
+		--image "$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
+	@echo "Deployed $(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 clean: ## Remove build artifacts
 	rm -rf $(BINARY_DIR)

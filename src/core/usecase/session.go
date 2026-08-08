@@ -10,13 +10,13 @@ import (
 
 // SessionService handles join/me flows.
 type SessionService struct {
-	repo ports.GameRepository
+	repo ports.Store
 	log  *slog.Logger
 }
 
 const firstRoundID int64 = 1
 
-func NewSessionService(repo ports.GameRepository, log *slog.Logger) *SessionService {
+func NewSessionService(repo ports.Store, log *slog.Logger) *SessionService {
 	return &SessionService{repo: repo, log: log}
 }
 

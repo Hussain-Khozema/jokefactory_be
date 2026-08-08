@@ -2,21 +2,23 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"jokefactory/src/app/http/response"
 	"jokefactory/src/app/middleware"
+	"jokefactory/src/core/domain"
 	"jokefactory/src/core/usecase"
 )
 
-// CustomerHandler handles customer endpoints.
+// CustomerHandler serves the market board (AI-customer driven).
 type CustomerHandler struct {
-	customerService *usecase.CustomerService
+	ai *usecase.AICustomerService
 }
 
-func NewCustomerHandler(customerService *usecase.CustomerService) *CustomerHandler {
-	return &CustomerHandler{customerService: customerService}
+func NewCustomerHandler(ai *usecase.AICustomerService) *CustomerHandler {
+	return &CustomerHandler{ai: ai}
 }
 
 func (h *CustomerHandler) Market(c *gin.Context) {
@@ -29,122 +31,33 @@ func (h *CustomerHandler) Market(c *gin.Context) {
 		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
 		return
 	}
-	items, err := h.customerService.Market(c.Request.Context(), userID, roundID)
+	if h.ai == nil {
+		response.FromDomainError(c, domain.NewConflictError("AI customer engine not configured"), middleware.GetRequestID(c))
+		return
+	}
+	items, err := h.ai.Market(c.Request.Context(), userID, roundID)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	var out []gin.H
-	for _, item := range items {
-		out = append(out, gin.H{
-			"joke_id":         item.JokeID,
-			"joke_text":       item.JokeText,
-			"joke_title":      item.JokeTitle,
-			"team": gin.H{
-				"id":                item.TeamID,
-				"name":              item.TeamName,
-				"performance_label": item.TeamLabel,
-				"accepted_jokes":    item.TeamAccepted,
-				"sold_jokes_count":  item.TeamSold,
-				"profit":            item.TeamProfit,
-			},
-			"bought_count":    item.BoughtCount,
-			"is_bought_by_me": item.IsBoughtByMe,
-		})
+	out := make([]gin.H, 0, len(items))
+	for _, it := range items {
+		title := ""
+		if it.JokeTitle != nil {
+			title = *it.JokeTitle
+		}
+		item := gin.H{
+			"joke_id":    it.JokeID,
+			"joke_text":  it.JokeText,
+			"joke_title": title,
+			"team_id":    it.TeamID,
+			"team_name":  it.TeamName,
+			"sold_count": it.SoldCount,
+		}
+		if it.PublishedAt != nil {
+			item["published_at"] = it.PublishedAt.UTC().Format(time.RFC3339Nano)
+		}
+		out = append(out, item)
 	}
 	response.OK(c, gin.H{"items": out})
-}
-
-func (h *CustomerHandler) Budget(c *gin.Context) {
-	userID, ok := parseUserID(c)
-	if !ok {
-		return
-	}
-	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
-		return
-	}
-	budget, err := h.customerService.Budget(c.Request.Context(), userID, roundID)
-	if err != nil {
-		response.FromDomainError(c, err, middleware.GetRequestID(c))
-		return
-	}
-	response.OK(c, gin.H{
-		"round_id":         budget.RoundID,
-		"starting_budget":  budget.StartingBudget,
-		"remaining_budget": budget.RemainingBudget,
-	})
-}
-
-func (h *CustomerHandler) Buy(c *gin.Context) {
-	userID, ok := parseUserID(c)
-	if !ok {
-		return
-	}
-	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
-		return
-	}
-	jokeID, err := strconv.ParseInt(c.Param("joke_id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "invalid joke id", middleware.GetRequestID(c))
-		return
-	}
-	purchase, budget, teamID, err := h.customerService.Buy(c.Request.Context(), userID, roundID, jokeID)
-	if err != nil {
-		response.FromDomainError(c, err, middleware.GetRequestID(c))
-		return
-	}
-	response.OK(c, gin.H{
-		"purchase": gin.H{
-			"purchase_id": purchase.ID,
-			"joke_id":     purchase.JokeID,
-		},
-		"budget": gin.H{
-			"starting_budget":  budget.StartingBudget,
-			"remaining_budget": budget.RemainingBudget,
-		},
-		"team_points_awarded": gin.H{
-			"team_id":      teamID,
-			"points_delta": 1,
-		},
-	})
-}
-
-func (h *CustomerHandler) Return(c *gin.Context) {
-	userID, ok := parseUserID(c)
-	if !ok {
-		return
-	}
-	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
-		return
-	}
-	jokeID, err := strconv.ParseInt(c.Param("joke_id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "invalid joke id", middleware.GetRequestID(c))
-		return
-	}
-	purchase, budget, teamID, err := h.customerService.Return(c.Request.Context(), userID, roundID, jokeID)
-	if err != nil {
-		response.FromDomainError(c, err, middleware.GetRequestID(c))
-		return
-	}
-	response.OK(c, gin.H{
-		"purchase": gin.H{
-			"purchase_id": purchase.ID,
-			"joke_id":     purchase.JokeID,
-		},
-		"budget": gin.H{
-			"starting_budget":  budget.StartingBudget,
-			"remaining_budget": budget.RemainingBudget,
-		},
-		"team_points_awarded": gin.H{
-			"team_id":      teamID,
-			"points_delta": -1,
-		},
-	})
 }

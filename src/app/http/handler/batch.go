@@ -11,7 +11,6 @@ import (
 	"jokefactory/src/core/usecase"
 )
 
-// BatchHandler handles JM batch endpoints.
 type BatchHandler struct {
 	batchService *usecase.BatchService
 }
@@ -79,31 +78,22 @@ func (h *BatchHandler) List(c *gin.Context) {
 
 	var out []gin.H
 	for _, b := range batches {
-		var tagSummary []gin.H
-		for _, ts := range b.TagSummary {
-			tagSummary = append(tagSummary, gin.H{
-				"tag":   ts.Tag,
-				"count": ts.Count,
-			})
-		}
 		var jokes []gin.H
 		for _, j := range b.Jokes {
 			jokes = append(jokes, gin.H{
-				"joke_id":      j.ID,
-				"joke_text":    j.Text,
-				"is_published": j.IsPublished,
-				"sold_count":   j.SoldCount,
+				"joke_id":        j.ID,
+				"joke_text":      j.Text,
+				"joke_title":     j.Title,
+				"publish_status": j.PublishStatus,
+				"published_at":   j.PublishedAt,
+				"sold_count":     j.SoldCount,
 			})
 		}
 		out = append(out, gin.H{
 			"batch_id":     b.ID,
 			"status":       b.Status,
 			"submitted_at": b.SubmittedAt,
-			"rated_at":     b.RatedAt,
-			"avg_score":    b.AvgScore,
-			"passes_count": b.PassesCount,
-			"feedback":     b.Feedback,
-			"tag_summary":  tagSummary,
+			"processed_at": b.ProcessedAt,
 			"jokes":        jokes,
 		})
 	}

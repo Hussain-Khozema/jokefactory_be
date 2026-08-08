@@ -7,7 +7,7 @@ import "github.com/gin-gonic/gin"
 // origin and headers as needed for production.
 func CORS() gin.HandlerFunc {
 	const (
-		allowedOrigin = "*"
+		allowedOrigin  = "*"
 		allowedMethods = "GET, POST, PATCH, PUT, DELETE, OPTIONS"
 		allowedHeaders = "Content-Type, X-User-Id"
 		maxAge         = "600"
@@ -29,4 +29,3 @@ func CORS() gin.HandlerFunc {
 		c.Next()
 	}
 }
-

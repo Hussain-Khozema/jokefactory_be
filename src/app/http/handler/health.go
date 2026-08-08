@@ -46,4 +46,3 @@ func (h *HealthHandler) DetailedHealth(c *gin.Context) {
 	status := h.healthService.Check(c.Request.Context())
 	c.JSON(http.StatusOK, status)
 }
-

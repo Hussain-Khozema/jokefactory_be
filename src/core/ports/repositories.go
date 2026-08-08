@@ -1,8 +1,3 @@
-// Package ports defines interfaces (ports) that connect core domain to infrastructure.
-// These interfaces follow the ports and adapters (hexagonal) architecture pattern.
-//
-// Ports are defined here in the core layer, while implementations (adapters)
-// live in src/infra/repo. This ensures the core has no dependency on infrastructure.
 package ports
 
 import (
@@ -12,114 +7,75 @@ import (
 	"jokefactory/src/core/domain"
 )
 
-// Repository is the base interface for all repositories.
-// Concrete repositories should embed this and add entity-specific methods.
 type Repository interface {
-	// Health checks if the underlying storage is reachable.
 	Health(ctx context.Context) error
 }
 
-// BatchWithJokes bundles a batch with its jokes.
 type BatchWithJokes struct {
 	Batch domain.Batch
 	Jokes []domain.Joke
 }
 
-// MarketItem represents a published joke in the marketplace.
-type MarketItem struct {
-	JokeID       int64
-	JokeText     string
-	// JokeTitle is an optional QC-set title for display in the market.
-	// NULL if QC didn't provide one.
-	JokeTitle    *string
-	TeamID       int64
-	TeamName     string
-	TeamLabel    string
-	TeamProfit   float64
-	TeamAccepted int
-	TeamSold     int
-	BoughtCount  int
-	IsBoughtByMe bool
-}
-
-// TeamMember is a user assigned to a team with a role.
 type TeamMember struct {
 	UserID      int64
 	DisplayName string
 	Role        domain.Role
 }
 
-// LobbySnapshot captures lobby state for instructor.
 type LobbySnapshot struct {
 	RoundID    int64
 	Summary    LobbySummary
 	Teams      []LobbyTeam
-	Customers  []LobbyCustomer
 	Unassigned []LobbyUnassigned
 }
 
-// LobbySummary aggregates counts for lobby view.
 type LobbySummary struct {
-	Waiting       int
-	Assigned      int
-	Dropped       int
-	TeamCount     int
-	CustomerCount int
+	Waiting   int
+	Assigned  int
+	Dropped   int
+	TeamCount int
 }
 
-// LobbyTeam lists team members.
 type LobbyTeam struct {
 	Team    domain.Team
 	Members []TeamMember
 }
 
-// LobbyCustomer represents a customer in the lobby.
-type LobbyCustomer struct {
-	UserID      int64
-	DisplayName string
-	Role        domain.Role
-}
-
-// LobbyUnassigned represents a waiting participant.
 type LobbyUnassigned struct {
 	UserID      int64
 	DisplayName string
 	Status      domain.ParticipantStatus
 }
 
-// TeamSummary aggregates stats for a team in a round.
 type TeamSummary struct {
-	Team            domain.Team
-	RoundID         int64
-	Rank            int
-	Points          int
-	Profit          float64
-	TotalSales      int
-	Performance     string
-	BatchesCreated  int
-	BatchesRated    int
-	AcceptedJokes   int
-	UnsoldJokes     int
-	SoldJokesCount  int
-	AvgScoreOverall float64
-	UnratedBatches  int
+	Team               domain.Team
+	RoundID            int64
+	Rank               int
+	Points             int
+	Profit             float64
+	TotalSales         int
+	Performance        string
+	BatchesCreated     int
+	BatchesProcessed   int
+	PublishedJokes     int
+	DiscardedJokes     int
+	UnsoldJokes        int
+	SoldJokesCount     int
+	UnprocessedBatches int
 }
 
-// TeamStats is used for instructor round stats.
 type TeamStats struct {
-	Rank            int         `json:"rank"`
-	Team            domain.Team `json:"team"`
-	BatchesRated    int         `json:"batches_rated"`
-	TotalSales      int         `json:"total_sales"`
-	AcceptedJokes   int         `json:"accepted_jokes"`
-	UnacceptedJokes int         `json:"unaccepted_jokes"`
-	AvgScoreOverall float64     `json:"avg_score_overall"`
-	TotalJokes      int         `json:"total_jokes"`
-	UnsoldJokes     int         `json:"unsold_jokes"`
-	Profit          float64     `json:"profit"`
+	Rank             int         `json:"rank"`
+	Team             domain.Team `json:"team"`
+	BatchesProcessed int         `json:"batches_processed"`
+	TotalSales       int         `json:"total_sales"`
+	PublishedJokes   int         `json:"published_jokes"`
+	DiscardedJokes   int         `json:"discarded_jokes"`
+	TotalJokes       int         `json:"total_jokes"`
+	UnsoldJokes      int         `json:"unsold_jokes"`
+	Profit           float64     `json:"profit"`
 }
 
-// SalesPoint represents cumulative points (sales) growth over time per team.
 type SalesPoint struct {
 	EventIndex       int       `json:"event_index"`
 	TeamEventIndex   int       `json:"team_event_index"`
@@ -129,117 +85,172 @@ type SalesPoint struct {
 	CumulativePoints int       `json:"cumulative_points"`
 }
 
-// UnratedJokesPoint represents queue size over time per team.
-type UnratedJokesPoint struct {
-	EventIndex   int       `json:"event_index"`
-	TeamEventIndex int     `json:"team_event_index"`
-	Timestamp    time.Time `json:"timestamp"`
-	TeamID       int64     `json:"team_id"`
-	TeamName     string    `json:"team_name"`
-	QueueCount   int       `json:"queue_count"`
-}
-
-// BatchSequencePoint shows average score by batch submission order for a team.
-type BatchSequencePoint struct {
-	RoundID     int64   `json:"round_id"`
-	RoundNumber int     `json:"round_number"`
-	TeamID      int64   `json:"team_id"`
-	TeamName    string  `json:"team_name"`
-	BatchOrder  int     `json:"batch_order"`
-	AvgScore    float64 `json:"avg_score"`
-}
-
-// BatchSizeQualityPoint maps batch size to average score, used for round comparison.
-type BatchSizeQualityPoint struct {
-	RoundID     int64   `json:"round_id"`
-	RoundNumber int     `json:"round_number"`
-	TeamID      int64   `json:"team_id"`
-	TeamName    string  `json:"team_name"`
-	BatchSize   int     `json:"batch_size"`
-	AvgScore    float64 `json:"avg_score"`
-}
-
-// TeamRejectionPoint represents rejection-related metrics per team for charts.
-type TeamRejectionPoint struct {
-	TeamID          int64   `json:"team_id"`
-	TeamName        string  `json:"team_name"`
-	UnacceptedJokes int     `json:"unaccepted_jokes"`
-	RejectionRate   float64 `json:"rejection_rate"`
-}
-
-// RoundStats aggregates leaderboard plus chart data for instructor dashboard.
 type RoundStats struct {
-	RoundID              int64                   `json:"round_id"`
-	Leaderboard          []TeamStats             `json:"leaderboard"`
-	RejectionByTeam      []TeamRejectionPoint    `json:"rejection_by_team"`
-	SalesOverTime        []SalesPoint            `json:"sales_over_time"`
-	UnratedJokesOverTime []UnratedJokesPoint     `json:"unrated_jokes_over_time"`
-	BatchSequenceQuality []BatchSequencePoint    `json:"batch_sequence_quality"`
-	BatchSizeQuality     []BatchSizeQualityPoint `json:"batch_size_quality"`
+	RoundID     int64       `json:"round_id"`
+	Leaderboard []TeamStats `json:"leaderboard"`
 }
 
-// GameRepository is a composite repository covering all domain operations.
-// The API surface mirrors the BE Schema v2 contract.
-type GameRepository interface {
-	Repository
-
-	// Users & participants
+type UserRepository interface {
 	CreateUser(ctx context.Context, displayName string) (*domain.User, error)
 	GetUserByDisplayName(ctx context.Context, displayName string) (*domain.User, error)
 	GetUserByID(ctx context.Context, userID int64) (*domain.User, error)
 	UpdateUserAssignment(ctx context.Context, userID int64, role *domain.Role, teamID *int64) error
 	UpdateUserStatus(ctx context.Context, userID int64, status domain.ParticipantStatus) error
-	// PatchUserInRound updates user role/team/status and keeps customer budget consistent
-	// for the given round (create budget row when becoming CUSTOMER; delete when leaving CUSTOMER).
-	//
-	// Implementation detail: should be atomic (single DB transaction).
 	PatchUserInRound(ctx context.Context, roundID, userID int64, status domain.ParticipantStatus, role *domain.Role, teamID *int64) error
 	MarkUserAssigned(ctx context.Context, userID int64) error
 	ListUsersByStatus(ctx context.Context, status domain.ParticipantStatus) ([]domain.User, error)
 	ListTeamMembers(ctx context.Context, teamID int64) ([]TeamMember, error)
-	ListCustomers(ctx context.Context) ([]LobbyCustomer, error)
 	DeleteUser(ctx context.Context, userID int64) error
+}
 
-	// Teams
+type TeamRepository interface {
 	EnsureTeamCount(ctx context.Context, teamCount int) ([]domain.Team, error)
 	GetTeam(ctx context.Context, teamID int64) (*domain.Team, error)
+}
 
-	// Rounds
+type RoundRepository interface {
 	GetActiveRound(ctx context.Context) (*domain.Round, error)
 	GetRoundByID(ctx context.Context, roundID int64) (*domain.Round, error)
 	GetLatestRound(ctx context.Context) (*domain.Round, error)
 	ListRounds(ctx context.Context) ([]domain.Round, error)
-	UpdateRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error)
-	InsertRoundConfig(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error)
-	StartRound(ctx context.Context, roundID int64, customerBudget, batchSize int, marketPrice, costOfPublishing float64) (*domain.Round, error)
+	UpdateRoundConfig(ctx context.Context, roundID int64, cfg *domain.RoundConfig) (*domain.Round, error)
+	InsertRoundConfig(ctx context.Context, roundID int64, cfg *domain.RoundConfig) (*domain.Round, error)
+	UpsertIdealProfile(ctx context.Context, roundID int64, profile domain.IdealProfile) error
+	GetIdealProfile(ctx context.Context, roundID int64) (domain.IdealProfile, error)
+	StartRound(ctx context.Context, roundID int64) (*domain.Round, error)
 	EndRound(ctx context.Context, roundID int64) (*domain.Round, error)
 	SetRoundPopupState(ctx context.Context, roundID int64, isActive bool) (*domain.Round, error)
-
-	// Team round state
 	EnsureTeamRoundState(ctx context.Context, roundID, teamID int64) error
-	IncrementBatchCreated(ctx context.Context, roundID, teamID int64) error
-	IncrementRatedStats(ctx context.Context, roundID, teamID int64, passesCount, pointsDelta int) error
+	ResetGame(ctx context.Context) error
+}
 
-	// Batches and jokes
+type BatchRepository interface {
 	CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error)
 	ListBatchesByTeam(ctx context.Context, roundID, teamID int64) ([]domain.Batch, error)
 	GetBatchWithJokes(ctx context.Context, batchID int64) (*BatchWithJokes, error)
-	GetNextBatchForQC(ctx context.Context, roundID, qcUserID, teamID int64) (*BatchWithJokes, int, error)
-	RateBatch(ctx context.Context, batchID int64, qcUserID int64, ratings []domain.JokeRating, feedback *string) (*domain.Batch, []int64, error)
 	CountSubmittedBatches(ctx context.Context, roundID int64) (int, error)
+}
 
-	// Market and budget
-	EnsureCustomerBudget(ctx context.Context, roundID, customerID int64, starting int) (*domain.CustomerRoundBudget, error)
-	ListMarket(ctx context.Context, roundID, customerID int64) ([]MarketItem, error)
-	BuyJoke(ctx context.Context, roundID, customerID, jokeID int64, marketPrice float64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error)
-	ReturnJoke(ctx context.Context, roundID, customerID, jokeID int64, marketPrice float64) (*domain.Purchase, *domain.CustomerRoundBudget, int64, error)
+// JokePublishDecision is Marketing's per-joke publish/discard choice.
+type JokePublishDecision struct {
+	JokeID      int64
+	Title       string
+	IsPublished bool
+}
 
-	// Stats
+// PublishResult is the outcome of Marketing publishing a batch.
+type PublishResult struct {
+	Batch        domain.Batch
+	PublishedIDs []int64
+	DiscardedIDs []int64
+}
+
+type MarketingRepository interface {
+	// ClaimNextBatch locks the next SUBMITTED batch for the marketer's team
+	// (FOR UPDATE SKIP LOCKED). Returns nil,nil when the queue is empty.
+	ClaimNextBatch(ctx context.Context, roundID, teamID, marketerID int64) (*BatchWithJokes, error)
+	CountSubmittedBatchesForTeam(ctx context.Context, roundID, teamID int64) (int, error)
+	PublishBatch(ctx context.Context, batchID, marketerID, teamID int64, decisions []JokePublishDecision) (*PublishResult, error)
+}
+
+// FeedbackJokeRow is one published joke plus its materialized dim_fits for feedback.
+type FeedbackJokeRow struct {
+	JokeID    int64
+	JokeTitle string
+	WasBought bool
+	DimFits   map[domain.Dimension]float64
+}
+
+type StatsRepository interface {
 	GetTeamSummary(ctx context.Context, roundID, teamID int64) (*TeamSummary, error)
 	GetLobby(ctx context.Context, roundID int64) (*LobbySnapshot, error)
-	GetRoundStats(ctx context.Context, roundID int64) ([]TeamStats, error)
 	GetRoundStatsV2(ctx context.Context, roundID int64) (*RoundStats, error)
+	// ListTeamFeedbackJokes returns the latest limit published jokes for a team
+	// (newest first), each with dim_fits and whether any AI customer bought it.
+	ListTeamFeedbackJokes(ctx context.Context, roundID, teamID int64, limit int) ([]FeedbackJokeRow, error)
+}
 
-	// Admin utilities
-	ResetGame(ctx context.Context) error
+// MaxClassificationAttempts is the job-level retry ceiling before FAILED sticks.
+const MaxClassificationAttempts = 5
+
+// StaleClassificationAfter is how long a PROCESSING job may sit before the
+// reconciler treats it as abandoned and re-enqueues.
+const StaleClassificationAfter = 5 * time.Minute
+
+// JokeFitMaterialization is one joke's persisted classification + fit scores.
+type JokeFitMaterialization struct {
+	JokeID     int64
+	RoundID    int64
+	Categories map[domain.Dimension]string
+	DimFits    map[domain.Dimension]float64
+	TrueFit    float64
+}
+
+type ClassificationRepository interface {
+	EnsureClassificationJob(ctx context.Context, batchID, roundID int64) error
+	// ClaimClassificationJob marks the job PROCESSING and increments attempts.
+	// Returns nil,nil when the job is DONE, missing, or not claimable.
+	ClaimClassificationJob(ctx context.Context, batchID int64) (*domain.ClassificationJob, error)
+	MarkClassificationDone(ctx context.Context, batchID int64, model string) error
+	MarkClassificationFailed(ctx context.Context, batchID int64, errMsg string) error
+	PersistJokeFits(ctx context.Context, fits []JokeFitMaterialization) error
+	GetJokeFit(ctx context.Context, jokeID int64) (*domain.JokeFit, error)
+	ListJokeDimFits(ctx context.Context, jokeID int64) ([]domain.JokeDimFit, error)
+	ListJokeDimensionValues(ctx context.Context, jokeID int64) ([]domain.JokeDimensionValue, error)
+	// ListOrphanClassificationBatchIDs returns PROCESSED batches that still need
+	// classification (missing/pending/failed/stale job).
+	ListOrphanClassificationBatchIDs(ctx context.Context, limit int) ([]int64, error)
+}
+
+// HeldJoke is one AI customer's current holding with its materialized fit.
+type HeldJoke struct {
+	JokeID  int64
+	TeamID  int64
+	TrueFit float64
+	Price   float64
+}
+
+// CandidateJoke is a classified published joke available for purchase evaluation.
+type CandidateJoke struct {
+	JokeID  int64
+	TeamID  int64
+	RoundID int64
+	TrueFit float64
+}
+
+// MarketJoke is a published joke as shown on the market board.
+type MarketJoke struct {
+	JokeID      int64
+	JokeText    string
+	JokeTitle   *string
+	TeamID      int64
+	TeamName    string
+	SoldCount   int
+	PublishedAt *time.Time
+}
+
+type AICustomerRepository interface {
+	ReplaceAICustomers(ctx context.Context, roundID int64, customers []domain.AICustomer) error
+	ListAICustomers(ctx context.Context, roundID int64) ([]domain.AICustomer, error)
+	ListCandidateJokes(ctx context.Context, jokeIDs []int64) ([]CandidateJoke, error)
+	ListHoldings(ctx context.Context, roundID, aiCustomerID int64) ([]HeldJoke, error)
+	// BuyJoke locks the customer row, deducts budget, inserts purchase + event, +1 points.
+	BuyJoke(ctx context.Context, roundID, aiCustomerID, jokeID, teamID int64, price float64) error
+	// SwapJoke returns weakestHeld and buys jokeID in one transaction.
+	SwapJoke(ctx context.Context, roundID, aiCustomerID, buyJokeID, buyTeamID, returnJokeID, returnTeamID int64, price float64) error
+	ListMarket(ctx context.Context, roundID int64) ([]MarketJoke, error)
+}
+
+// Store is the composed surface used by usecases during the refactor.
+// Narrower per-aggregate deps land as services are rewritten in later phases.
+type Store interface {
+	Repository
+	UserRepository
+	TeamRepository
+	RoundRepository
+	BatchRepository
+	MarketingRepository
+	ClassificationRepository
+	AICustomerRepository
+	StatsRepository
 }

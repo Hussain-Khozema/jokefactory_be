@@ -4,9 +4,11 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"jokefactory/src/infra/config"
@@ -69,7 +71,39 @@ func (p *Postgres) Health(ctx context.Context) error {
 	return p.Pool.Ping(ctx)
 }
 
-// TODO: Add transaction helper methods
+// WithTx runs fn inside a single database transaction (unit of work).
+//
+// It acquires a connection from the pool, begins a transaction, and invokes fn
+// with the transaction handle. If fn returns an error (or panics), the
+// transaction is rolled back and the error (or panic) is propagated; otherwise
+// it is committed. Use this to make multi-table operations atomic (e.g. publish,
+// buy, swap, round start).
+func (p *Postgres) WithTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+
+	// Ensure a panic in fn still rolls back the transaction before unwinding.
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tx.Rollback(ctx)
+			panic(r)
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+			return errors.Join(err, rbErr)
+		}
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
+}
+
 // TODO: Add query logging middleware for development
 // TODO: Add connection pool metrics
-

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jokefactory/src/app/http/dto"
 	"jokefactory/src/app/http/response"
 	"jokefactory/src/app/middleware"
 	"jokefactory/src/core/usecase"
@@ -26,26 +27,9 @@ func (h *RoundHandler) Active(c *gin.Context) {
 		return
 	}
 
-	out := make([]gin.H, 0, len(rounds))
-	for _, rd := range rounds {
-		maxBatchSize := rd.BatchSize
-		if rd.RoundNumber == 2 {
-			maxBatchSize = 10
-		}
-
-		out = append(out, gin.H{
-			"id":                 rd.ID,
-			"round_number":       rd.RoundNumber,
-			"status":             rd.Status,
-			"batch_size":         rd.BatchSize,
-			"max_batch_size":     maxBatchSize,
-			"customer_budget":    rd.CustomerBudget,
-			"market_price":       rd.MarketPrice,
-			"cost_of_publishing": rd.CostOfPublishing,
-			"started_at":         rd.StartedAt,
-			"ended_at":           rd.EndedAt,
-			"is_popped_active":   rd.IsPoppedActive,
-		})
+	out := make([]dto.PublicRound, 0, len(rounds))
+	for i := range rounds {
+		out = append(out, dto.ToPublicRound(&rounds[i]))
 	}
 
 	response.OK(c, gin.H{"rounds": out})
@@ -73,18 +57,18 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 			"id":   summary.Team.ID,
 			"name": summary.Team.Name,
 		},
-		"round_id":          summary.RoundID,
-		"rank":              summary.Rank,
-		"points":            summary.Points,
-		"profit":            summary.Profit,
-		"total_sales":       summary.TotalSales,
-		"performance_label": summary.Performance,
-		"unsold_jokes":      summary.UnsoldJokes,
-		"sold_jokes_count":  summary.SoldJokesCount,
-		"batches_created":   summary.BatchesCreated,
-		"batches_rated":     summary.BatchesRated,
-		"accepted_jokes":    summary.AcceptedJokes,
-		"avg_score_overall": summary.AvgScoreOverall,
-		"unrated_batches":   summary.UnratedBatches,
+		"round_id":            summary.RoundID,
+		"rank":                summary.Rank,
+		"points":              summary.Points,
+		"profit":              summary.Profit,
+		"total_sales":         summary.TotalSales,
+		"performance_label":   summary.Performance,
+		"unsold_jokes":        summary.UnsoldJokes,
+		"sold_jokes_count":    summary.SoldJokesCount,
+		"batches_created":     summary.BatchesCreated,
+		"batches_processed":   summary.BatchesProcessed,
+		"published_jokes":     summary.PublishedJokes,
+		"discarded_jokes":     summary.DiscardedJokes,
+		"unprocessed_batches": summary.UnprocessedBatches,
 	})
 }
