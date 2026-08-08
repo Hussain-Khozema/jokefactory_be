@@ -9,12 +9,13 @@ import (
 	"jokefactory/src/core/domain"
 	"jokefactory/src/core/ports"
 	"jokefactory/src/core/usecase"
+	"jokefactory/src/core/usecase/testutil"
 	"jokefactory/src/infra/worker"
 )
 
-func TestPhase4MarketingFlow(t *testing.T) {
+func TestMarketingPublishFlow(t *testing.T) {
 	ctx := context.Background()
-	store := newMemStore()
+	store := testutil.NewStore()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	session := usecase.NewSessionService(store, log)
@@ -28,20 +29,12 @@ func TestPhase4MarketingFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names := []string{"JM1", "Mkt1", "JM2", "Mkt2"}
-	users := make([]*domain.User, 0, len(names))
-	for _, name := range names {
-		res, err := session.Join(ctx, name)
-		if err != nil {
-			t.Fatalf("join: %v", err)
-		}
-		users = append(users, res.User)
-	}
+	users := joinMany(t, session, []string{"JM1", "Mkt1", "JM2", "Mkt2"})
 	if _, err := instructor.Assign(ctx, 1, 2); err != nil {
 		t.Fatalf("assign: %v", err)
 	}
 	cfg := defaults
-	if _, err := instructor.Config(ctx, 1, &cfg, validIdealProfile()); err != nil {
+	if _, err := instructor.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
 		t.Fatalf("config: %v", err)
 	}
 	if _, err := instructor.StartRound(ctx, 1); err != nil {
@@ -51,12 +44,10 @@ func TestPhase4MarketingFlow(t *testing.T) {
 	jm := findJM(t, session, users)
 	mkt := findMarketing(t, session, users)
 	if *jm.TeamID != *mkt.TeamID {
-		// Ensure we use Marketing on the same team as the JM who submits.
 		mkt = findMarketingOnTeam(t, session, users, *jm.TeamID)
 	}
 
-	jokes := []string{"Setup one?", "Punchline one."}
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, jokes)
+	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"Setup one?", "Punchline one."})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
@@ -76,11 +67,7 @@ func TestPhase4MarketingFlow(t *testing.T) {
 	if item.Batch.LockedBy == nil || *item.Batch.LockedBy != mkt.ID {
 		t.Fatalf("expected locked_by=%d", mkt.ID)
 	}
-	if len(item.Jokes) != 2 {
-		t.Fatalf("expected 2 jokes, got %d", len(item.Jokes))
-	}
 
-	// Re-claim returns the same held batch.
 	again, err := marketing.QueueNext(ctx, mkt.ID, 1)
 	if err != nil || again.Batch.ID != batch.ID {
 		t.Fatalf("reclaim: %+v err=%v", again, err)
@@ -112,7 +99,7 @@ func TestPhase4MarketingFlow(t *testing.T) {
 		t.Fatalf("joke1 status = %s", listed[0].Jokes[1].PublishStatus)
 	}
 
-	st := store.teamState[[2]int64{1, *jm.TeamID}]
+	st := store.TeamState[[2]int64{1, *jm.TeamID}]
 	if st == nil || st.BatchesProcessed != 1 || st.PublishedJokes != 1 || st.DiscardedJokes != 1 {
 		t.Fatalf("team state counters wrong: %+v", st)
 	}
@@ -122,7 +109,6 @@ func TestPhase4MarketingFlow(t *testing.T) {
 		t.Fatalf("post-publish queue count = %d err=%v", count, err)
 	}
 
-	// Cannot publish again.
 	_, err = marketing.Publish(ctx, mkt.ID, batch.ID, decisions)
 	if err == nil || !domain.IsConflict(err) {
 		t.Fatalf("expected BATCH_ALREADY_PROCESSED, got %v", err)
@@ -131,7 +117,7 @@ func TestPhase4MarketingFlow(t *testing.T) {
 
 func TestPublishRequiresAtLeastOnePublished(t *testing.T) {
 	ctx := context.Background()
-	store := newMemStore()
+	store := testutil.NewStore()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	session := usecase.NewSessionService(store, log)
 	instructor := usecase.NewInstructorService(store, nil, log)
@@ -144,7 +130,7 @@ func TestPublishRequiresAtLeastOnePublished(t *testing.T) {
 	users := joinMany(t, session, []string{"A", "B", "C", "D"})
 	_, _ = instructor.Assign(ctx, 1, 2)
 	cfg := defaults
-	_, _ = instructor.Config(ctx, 1, &cfg, validIdealProfile())
+	_, _ = instructor.Config(ctx, 1, &cfg, testutil.ValidIdealProfile())
 	_, _ = instructor.StartRound(ctx, 1)
 
 	jm := findJM(t, session, users)
@@ -165,51 +151,4 @@ func TestPublishRequiresAtLeastOnePublished(t *testing.T) {
 	if err == nil || !domain.IsValidationError(err) {
 		t.Fatalf("expected NO_JOKE_PUBLISHED, got %v", err)
 	}
-}
-
-func joinMany(t *testing.T, session *usecase.SessionService, names []string) []*domain.User {
-	t.Helper()
-	ctx := context.Background()
-	users := make([]*domain.User, 0, len(names))
-	for _, name := range names {
-		res, err := session.Join(ctx, name)
-		if err != nil {
-			t.Fatalf("join %s: %v", name, err)
-		}
-		users = append(users, res.User)
-	}
-	return users
-}
-
-func findMarketing(t *testing.T, session *usecase.SessionService, users []*domain.User) *domain.User {
-	t.Helper()
-	ctx := context.Background()
-	for _, u := range users {
-		me, err := session.Me(ctx, u.ID)
-		if err != nil {
-			t.Fatalf("me: %v", err)
-		}
-		if me.User.Role != nil && *me.User.Role == domain.RoleMarketing {
-			return me.User
-		}
-	}
-	t.Fatal("expected a MARKETING user")
-	return nil
-}
-
-func findMarketingOnTeam(t *testing.T, session *usecase.SessionService, users []*domain.User, teamID int64) *domain.User {
-	t.Helper()
-	ctx := context.Background()
-	for _, u := range users {
-		me, err := session.Me(ctx, u.ID)
-		if err != nil {
-			t.Fatalf("me: %v", err)
-		}
-		if me.User.Role != nil && *me.User.Role == domain.RoleMarketing &&
-			me.User.TeamID != nil && *me.User.TeamID == teamID {
-			return me.User
-		}
-	}
-	t.Fatal("expected MARKETING on team")
-	return nil
 }

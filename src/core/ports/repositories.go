@@ -128,7 +128,6 @@ type BatchRepository interface {
 	CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error)
 	ListBatchesByTeam(ctx context.Context, roundID, teamID int64) ([]domain.Batch, error)
 	GetBatchWithJokes(ctx context.Context, batchID int64) (*BatchWithJokes, error)
-	CountSubmittedBatches(ctx context.Context, roundID int64) (int, error)
 }
 
 // JokePublishDecision is Marketing's per-joke publish/discard choice.

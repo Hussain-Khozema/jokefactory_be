@@ -137,10 +137,3 @@ func (r *Repositories) GetBatchWithJokes(ctx context.Context, batchID int64) (*p
 	}
 	return &ports.BatchWithJokes{Batch: *b, Jokes: jokes}, rows.Err()
 }
-
-func (r *Repositories) CountSubmittedBatches(ctx context.Context, roundID int64) (int, error) {
-	var count int
-	err := r.pg.Pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM batches WHERE round_id = $1 AND status = 'SUBMITTED'`, roundID).Scan(&count)
-	return count, err
-}

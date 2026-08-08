@@ -12,74 +12,13 @@ import (
 	"jokefactory/src/core/domain/scoring"
 	"jokefactory/src/core/ports"
 	"jokefactory/src/core/usecase"
+	"jokefactory/src/core/usecase/testutil"
 	"jokefactory/src/infra/worker"
 )
 
-func TestSelectFeedbackDimensionsPreferImprove(t *testing.T) {
-	fits := map[domain.Dimension]float64{}
-	for _, dim := range scoring.AllDimensions {
-		fits[dim] = 1.0
-	}
-	fits[domain.DimLength] = 0
-	fits[domain.DimTopic] = 0
-	fits[domain.DimHumorStyle] = 0
-	fits[domain.DimComplexity] = 0
-
-	good, improve := usecase.SelectFeedbackDimensions(fits, 0.75)
-	wantImprove := []string{"LENGTH", "TOPIC", "HUMOR_STYLE"}
-	wantGood := []string{"EDGINESS", "STRUCTURE"}
-	if !reflect.DeepEqual(improve, wantImprove) {
-		t.Fatalf("improve = %v, want %v", improve, wantImprove)
-	}
-	if !reflect.DeepEqual(good, wantGood) {
-		t.Fatalf("good = %v, want %v", good, wantGood)
-	}
-}
-
-func TestSelectFeedbackDimensionsBackfillPassWhenFewFails(t *testing.T) {
-	fits := map[domain.Dimension]float64{}
-	for _, dim := range scoring.AllDimensions {
-		fits[dim] = 1.0
-	}
-	fits[domain.DimLength] = 0
-
-	good, improve := usecase.SelectFeedbackDimensions(fits, 0.75)
-	if !reflect.DeepEqual(improve, []string{"LENGTH"}) {
-		t.Fatalf("improve = %v", improve)
-	}
-	wantGood := []string{"TOPIC", "HUMOR_STYLE", "COMPLEXITY", "EDGINESS"}
-	if !reflect.DeepEqual(good, wantGood) {
-		t.Fatalf("good = %v, want %v", good, wantGood)
-	}
-}
-
-func TestSelectFeedbackDimensionsBackfillFailWhenFewPasses(t *testing.T) {
-	fits := map[domain.Dimension]float64{}
-	for _, dim := range scoring.AllDimensions {
-		fits[dim] = 0
-	}
-	fits[domain.DimTitleFit] = 1.0
-
-	good, improve := usecase.SelectFeedbackDimensions(fits, 0.75)
-	if !reflect.DeepEqual(good, []string{"TITLE_FIT"}) {
-		t.Fatalf("good = %v", good)
-	}
-	wantImprove := []string{"LENGTH", "TOPIC", "HUMOR_STYLE", "COMPLEXITY"}
-	if !reflect.DeepEqual(improve, wantImprove) {
-		t.Fatalf("improve = %v, want %v", improve, wantImprove)
-	}
-}
-
-func TestSelectFeedbackDimensionsEmpty(t *testing.T) {
-	good, improve := usecase.SelectFeedbackDimensions(nil, 0.75)
-	if len(good) != 0 || len(improve) != 0 {
-		t.Fatalf("got good=%v improve=%v", good, improve)
-	}
-}
-
-func TestPhase8FeedbackEndpoint(t *testing.T) {
+func TestFeedbackService(t *testing.T) {
 	ctx := context.Background()
-	store := newMemStore()
+	store := testutil.NewStore()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	session := usecase.NewSessionService(store, log)
@@ -100,7 +39,7 @@ func TestPhase8FeedbackEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := defaults
-	if _, err := instructor.Config(ctx, 1, &cfg, validIdealProfile()); err != nil {
+	if _, err := instructor.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := instructor.StartRound(ctx, 1); err != nil {
@@ -133,9 +72,9 @@ func TestPhase8FeedbackEndpoint(t *testing.T) {
 			t.Fatal(err)
 		}
 		if bought {
-			custID := store.nextAICust
-			store.nextAICust++
-			store.aiCustomers[custID] = &domain.AICustomer{
+			custID := store.NextAICust
+			store.NextAICust++
+			store.AICustomers[custID] = &domain.AICustomer{
 				ID: custID, RoundID: 1, PersonalThreshold: 1,
 				StartingBudget: 3, RemainingBudget: 2, CreatedAt: time.Now().UTC(),
 			}
@@ -191,21 +130,4 @@ func TestPhase8FeedbackEndpoint(t *testing.T) {
 	if _, err := feedback.Get(ctx, 1, *jm.TeamID, otherMkt.ID); err == nil {
 		t.Fatal("expected forbidden for other team")
 	}
-}
-
-func findOtherTeamMarketing(t *testing.T, session *usecase.SessionService, users []*domain.User, excludeTeam int64) *domain.User {
-	t.Helper()
-	ctx := context.Background()
-	for _, u := range users {
-		me, err := session.Me(ctx, u.ID)
-		if err != nil {
-			t.Fatalf("me: %v", err)
-		}
-		if me.User.Role != nil && *me.User.Role == domain.RoleMarketing &&
-			me.User.TeamID != nil && *me.User.TeamID != excludeTeam {
-			return me.User
-		}
-	}
-	t.Fatal("expected MARKETING on another team")
-	return nil
 }

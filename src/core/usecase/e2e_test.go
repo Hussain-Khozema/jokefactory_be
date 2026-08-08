@@ -10,15 +10,14 @@ import (
 	"jokefactory/src/core/domain"
 	"jokefactory/src/core/ports"
 	"jokefactory/src/core/usecase"
+	"jokefactory/src/core/usecase/testutil"
 	"jokefactory/src/infra/llm"
 	"jokefactory/src/infra/worker"
 )
 
-// TestPhase10EndToEnd covers join → assign → config → start → submit →
-// publish → classify → buy → feedback → summary/stats → end.
-func TestPhase10EndToEnd(t *testing.T) {
+func TestEndToEndRound(t *testing.T) {
 	ctx := context.Background()
-	store := newMemStore()
+	store := testutil.NewStore()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 
@@ -50,7 +49,7 @@ func TestPhase10EndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := defaults
-	profile := validIdealProfile()
+	profile := testutil.ValidIdealProfile()
 	if _, err := instructor.Config(ctx, 1, &cfg, profile); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +83,7 @@ func TestPhase10EndToEnd(t *testing.T) {
 	discID := item.Jokes[1].ID
 
 	fixed := map[int64]map[domain.Dimension]string{
-		pubID: idealLLMCats(profile),
+		pubID: testutil.IdealLLMCats(profile),
 	}
 	classSvc := usecase.NewClassificationService(store, llm.StubClassifier{Fixed: fixed}, ai, "stub", log)
 
@@ -106,14 +105,8 @@ func TestPhase10EndToEnd(t *testing.T) {
 		t.Fatalf("true_fit = %v, want >= 7", fit.TrueFit)
 	}
 
-	sold := 0
-	for _, p := range store.purchases {
-		if p.JokeID == pubID {
-			sold++
-		}
-	}
-	if sold != 5 {
-		t.Fatalf("sold = %d, want 5", sold)
+	if testutil.PurchaseCount(store, pubID) != 5 {
+		t.Fatalf("sold = %d, want 5", testutil.PurchaseCount(store, pubID))
 	}
 
 	fb, err := feedback.Get(ctx, 1, *jm.TeamID, mkt.ID)
@@ -127,7 +120,6 @@ func TestPhase10EndToEnd(t *testing.T) {
 		t.Fatal("expected curated dimensions")
 	}
 
-	// profit = 5*1.00 - 1*0.10 - 1*0.01 = 4.89
 	wantProfit := 5*1.0 - 1*0.10 - 1*0.01
 	summary, err := roundSvc.TeamSummary(ctx, 1, *jm.TeamID)
 	if err != nil {

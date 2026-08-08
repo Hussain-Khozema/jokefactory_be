@@ -25,7 +25,6 @@ type PurchaseEvaluator interface {
 }
 
 // NewClassificationService wires the classification pipeline worker logic.
-// purchases may be nil until the AI customer engine is wired.
 func NewClassificationService(
 	repo ports.Store,
 	classifier ports.Classifier,

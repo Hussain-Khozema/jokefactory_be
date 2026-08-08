@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -60,7 +59,7 @@ func New(
 	router := gin.New()
 
 	// Create services
-	healthService := usecase.NewHealthService(log)
+	healthService := usecase.NewHealthService(repo, log)
 	sessionService := usecase.NewSessionService(repo, log)
 	roundService := usecase.NewRoundService(repo, log)
 	batchService := usecase.NewBatchService(repo, log)
@@ -110,10 +109,6 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID())
 	s.router.Use(middleware.CORS())
 	s.router.Use(middleware.Logging(s.log))
-
-	// TODO: Add CORS middleware if needed
-	// TODO: Add rate limiting middleware
-	// TODO: Add authentication middleware
 }
 
 // setupRoutes configures all HTTP routes.
@@ -238,21 +233,4 @@ func (s *Server) Shutdown() error {
 // Router returns the Gin router for testing.
 func (s *Server) Router() *gin.Engine {
 	return s.router
-}
-
-// WaitForReady waits until the server is ready to accept connections.
-// Useful for integration tests.
-func (s *Server) WaitForReady(timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(fmt.Sprintf("http://%s/health", s.cfg.Server.Addr()))
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return fmt.Errorf("server not ready after %v", timeout)
 }

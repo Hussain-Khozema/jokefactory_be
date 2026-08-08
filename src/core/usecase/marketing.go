@@ -110,7 +110,6 @@ func (s *MarketingService) Publish(
 
 	if err := s.dispatcher.Enqueue(ctx, batchID); err != nil {
 		s.log.Error("dispatcher enqueue failed", "batch_id", batchID, "error", err)
-		// Persist succeeded; classification reconciler (Phase 6) will recover.
 	}
 	return result, nil
 }

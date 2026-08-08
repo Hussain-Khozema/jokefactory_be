@@ -11,13 +11,14 @@ import (
 	"jokefactory/src/core/domain/scoring"
 	"jokefactory/src/core/ports"
 	"jokefactory/src/core/usecase"
+	"jokefactory/src/core/usecase/testutil"
 	"jokefactory/src/infra/llm"
 	"jokefactory/src/infra/worker"
 )
 
-func TestPhase6PublishClassifiesAndMaterializesFit(t *testing.T) {
+func TestPublishClassifiesAndMaterializesFit(t *testing.T) {
 	ctx := context.Background()
-	store := newMemStore()
+	store := testutil.NewStore()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	session := usecase.NewSessionService(store, log)
@@ -35,7 +36,7 @@ func TestPhase6PublishClassifiesAndMaterializesFit(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := defaults
-	profile := validIdealProfile()
+	profile := testutil.ValidIdealProfile()
 	if _, err := instructor.Config(ctx, 1, &cfg, profile); err != nil {
 		t.Fatal(err)
 	}
@@ -58,19 +59,7 @@ func TestPhase6PublishClassifiesAndMaterializesFit(t *testing.T) {
 	jokeID := item.Jokes[0].ID
 
 	fixed := map[int64]map[domain.Dimension]string{
-		jokeID: {
-			domain.DimTopic:       profile[domain.DimTopic],
-			domain.DimHumorStyle:  profile[domain.DimHumorStyle],
-			domain.DimComplexity:  profile[domain.DimComplexity],
-			domain.DimEdginess:    profile[domain.DimEdginess],
-			domain.DimStructure:   profile[domain.DimStructure],
-			domain.DimWordplay:    profile[domain.DimWordplay],
-			domain.DimFreshness:   profile[domain.DimFreshness],
-			domain.DimSetupPayoff: profile[domain.DimSetupPayoff],
-			domain.DimClarity:     profile[domain.DimClarity],
-			domain.DimEnergy:      profile[domain.DimEnergy],
-			domain.DimTitleFit:    "Perfect",
-		},
+		jokeID: testutil.IdealLLMCats(profile),
 	}
 	classSvc := usecase.NewClassificationService(store, llm.StubClassifier{Fixed: fixed}, nil, "stub", log)
 
@@ -101,15 +90,15 @@ func TestPhase6PublishClassifiesAndMaterializesFit(t *testing.T) {
 		t.Fatalf("dimension values = %d, want %d", len(vals), len(scoring.AllDimensions))
 	}
 
-	job := store.classJobs[batch.ID]
+	job := store.ClassJobs[batch.ID]
 	if job == nil || job.Status != domain.ClassificationDone {
 		t.Fatalf("job status = %+v", job)
 	}
 }
 
-func TestPhase6ReconcilerReclassifiesOrphans(t *testing.T) {
+func TestReconcilerReclassifiesOrphans(t *testing.T) {
 	ctx := context.Background()
-	store := newMemStore()
+	store := testutil.NewStore()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	session := usecase.NewSessionService(store, log)
@@ -123,7 +112,7 @@ func TestPhase6ReconcilerReclassifiesOrphans(t *testing.T) {
 	users := joinMany(t, session, []string{"A", "B", "C", "D"})
 	_, _ = instructor.Assign(ctx, 1, 2)
 	cfg := defaults
-	_, _ = instructor.Config(ctx, 1, &cfg, validIdealProfile())
+	_, _ = instructor.Config(ctx, 1, &cfg, testutil.ValidIdealProfile())
 	_, _ = instructor.StartRound(ctx, 1)
 
 	jm := findJM(t, session, users)
@@ -143,8 +132,7 @@ func TestPhase6ReconcilerReclassifiesOrphans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Simulate kill mid-flight: job stuck in PROCESSING, then reconciler finds it.
-	job := store.classJobs[batch.ID]
+	job := store.ClassJobs[batch.ID]
 	job.Status = domain.ClassificationProcessing
 	job.UpdatedAt = time.Now().UTC().Add(-ports.StaleClassificationAfter - time.Second)
 
@@ -153,8 +141,8 @@ func TestPhase6ReconcilerReclassifiesOrphans(t *testing.T) {
 	reconciler := worker.NewReconciler(store, dispatcher, time.Hour, log)
 	reconciler.Sweep(ctx)
 
-	if store.classJobs[batch.ID].Status != domain.ClassificationDone {
-		t.Fatalf("reconciler did not complete job: %+v", store.classJobs[batch.ID])
+	if store.ClassJobs[batch.ID].Status != domain.ClassificationDone {
+		t.Fatalf("reconciler did not complete job: %+v", store.ClassJobs[batch.ID])
 	}
 	if _, err := store.GetJokeFit(ctx, item.Jokes[0].ID); err != nil {
 		t.Fatalf("expected fit after reconcile: %v", err)
@@ -183,7 +171,6 @@ func TestStubClassifierOmitsLength(t *testing.T) {
 	}
 }
 
-// recordingDispatcher processes enqueued batches synchronously (test helper).
 type recordingDispatcher struct {
 	proc interface {
 		ProcessBatch(ctx context.Context, batchID int64) error

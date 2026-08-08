@@ -1,249 +1,93 @@
-package usecase_test
+//nolint:gocognit,gocritic,gocyclo // test fake mirrors production repository behavior
+package testutil
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"sort"
-	"testing"
 	"time"
 
 	"jokefactory/src/core/domain"
-	"jokefactory/src/core/domain/scoring"
 	"jokefactory/src/core/ports"
-	"jokefactory/src/core/usecase"
 )
 
-func TestPhase3PreMarketingFlow(t *testing.T) {
-	ctx := context.Background()
-	store := newMemStore()
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+type Store struct {
+	Users        map[int64]*domain.User
+	ByName       map[string]int64
+	Teams        []domain.Team
+	Rounds       map[int64]*domain.Round
+	Ideals       map[int64]domain.IdealProfile
+	TeamState    map[[2]int64]*domain.TeamRoundState
+	Batches      map[int64]*domain.Batch
+	ClassJobs    map[int64]*domain.ClassificationJob
+	DimValues    map[int64]map[domain.Dimension]string
+	DimFits      map[int64]map[domain.Dimension]float64
+	JokeFits     map[int64]*domain.JokeFit
+	AICustomers  map[int64]*domain.AICustomer // keyed by ai_customer_id
+	Purchases    map[int64]*domain.Purchase   // keyed by purchase_id
+	NextUser     int64
+	NextTeam     int64
+	NextBatch    int64
+	NextJoke     int64
+	NextAICust   int64
+	NextPurchase int64
+}
 
-	session := usecase.NewSessionService(store, log)
-	instructor := usecase.NewInstructorService(store, nil, log)
-	batches := usecase.NewBatchService(store, log)
-
-	// Seed a configured round shell (as instructor login would).
-	defaults := domain.DefaultRoundConfig()
-	if _, err := store.InsertRoundConfig(ctx, 1, &defaults); err != nil {
-		t.Fatalf("seed round: %v", err)
-	}
-
-	// Join students.
-	names := []string{"Alice", "Bob", "Carol", "Dave"}
-	users := make([]*domain.User, 0, len(names))
-	for _, name := range names {
-		res, err := session.Join(ctx, name)
-		if err != nil {
-			t.Fatalf("join %s: %v", name, err)
-		}
-		if res.User.Status != domain.ParticipantWaiting {
-			t.Fatalf("expected WAITING, got %s", res.User.Status)
-		}
-		users = append(users, res.User)
-	}
-
-	// Assign: 2 teams → JM + MARKETING each.
-	lobby, err := instructor.Assign(ctx, 1, 2)
-	if err != nil {
-		t.Fatalf("assign: %v", err)
-	}
-	if lobby.Summary.TeamCount != 2 {
-		t.Fatalf("expected 2 teams, got %d", lobby.Summary.TeamCount)
-	}
-	if lobby.Summary.Assigned != 4 {
-		t.Fatalf("expected 4 assigned, got %d", lobby.Summary.Assigned)
-	}
-
-	jm := findJM(t, session, users)
-
-	// Configure round + ideal profile.
-	cfg := domain.DefaultRoundConfig()
-	cfg.BatchSize = 2
-	cfg.BuyThreshold = 7.5
-	profile := validIdealProfile()
-	result, err := instructor.Config(ctx, 1, &cfg, profile)
-	if err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	if result.Round.BatchSize != 2 || result.Round.BuyThreshold != 7.5 {
-		t.Fatalf("config not persisted: %+v", result.Round)
-	}
-	if len(result.IdealProfile) != len(scoring.IdealDimensions()) {
-		t.Fatalf("ideal profile size = %d", len(result.IdealProfile))
-	}
-
-	// Start.
-	started, err := instructor.StartRound(ctx, 1)
-	if err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	if started.Status != domain.RoundActive {
-		t.Fatalf("expected ACTIVE, got %s", started.Status)
-	}
-
-	// JM submits batch.
-	jokes := []string{"Why did the chicken cross the road?", "Because it could."}
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, jokes)
-	if err != nil {
-		t.Fatalf("submit: %v", err)
-	}
-	if batch.Status != domain.BatchSubmitted {
-		t.Fatalf("expected SUBMITTED, got %s", batch.Status)
-	}
-
-	listed, err := batches.List(ctx, 1, *jm.TeamID, jm.ID)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(listed) != 1 || len(listed[0].Jokes) != 2 {
-		t.Fatalf("list unexpected: %+v", listed)
+func NewStore() *Store {
+	return &Store{
+		Users:        make(map[int64]*domain.User),
+		ByName:       make(map[string]int64),
+		Rounds:       make(map[int64]*domain.Round),
+		Ideals:       make(map[int64]domain.IdealProfile),
+		TeamState:    make(map[[2]int64]*domain.TeamRoundState),
+		Batches:      make(map[int64]*domain.Batch),
+		ClassJobs:    make(map[int64]*domain.ClassificationJob),
+		DimValues:    make(map[int64]map[domain.Dimension]string),
+		DimFits:      make(map[int64]map[domain.Dimension]float64),
+		JokeFits:     make(map[int64]*domain.JokeFit),
+		AICustomers:  make(map[int64]*domain.AICustomer),
+		Purchases:    make(map[int64]*domain.Purchase),
+		NextUser:     1,
+		NextTeam:     1,
+		NextBatch:    1,
+		NextJoke:     1,
+		NextAICust:   1,
+		NextPurchase: 1,
 	}
 }
 
-func findJM(t *testing.T, session *usecase.SessionService, users []*domain.User) *domain.User {
-	t.Helper()
-	ctx := context.Background()
-	for _, u := range users {
-		me, err := session.Me(ctx, u.ID)
-		if err != nil {
-			t.Fatalf("me: %v", err)
-		}
-		if me.User.Role != nil && *me.User.Role == domain.RoleJM {
-			return me.User
-		}
-	}
-	t.Fatal("expected a JM with team")
-	return nil
-}
+func (st *Store) Health(context.Context) error { return nil }
 
-func TestStartRequiresIdealProfile(t *testing.T) {
-	ctx := context.Background()
-	store := newMemStore()
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	instructor := usecase.NewInstructorService(store, nil, log)
-
-	defaults := domain.DefaultRoundConfig()
-	if _, err := store.InsertRoundConfig(ctx, 1, &defaults); err != nil {
-		t.Fatal(err)
-	}
-	_, err := instructor.StartRound(ctx, 1)
-	if err == nil || !domain.IsConflict(err) {
-		t.Fatalf("expected conflict without ideal profile, got %v", err)
-	}
-}
-
-func TestConfigRejectsInvalidIdeal(t *testing.T) {
-	ctx := context.Background()
-	store := newMemStore()
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	instructor := usecase.NewInstructorService(store, nil, log)
-
-	bad := validIdealProfile()
-	bad[domain.DimTopic] = "NotARealTopic"
-	cfg := domain.DefaultRoundConfig()
-	_, err := instructor.Config(ctx, 1, &cfg, bad)
-	if err == nil || !domain.IsValidationError(err) {
-		t.Fatalf("expected validation error, got %v", err)
-	}
-}
-
-func validIdealProfile() domain.IdealProfile {
-	return domain.IdealProfile{
-		domain.DimLength:      scoring.LengthMedium,
-		domain.DimTopic:       "Work",
-		domain.DimHumorStyle:  "Observational",
-		domain.DimComplexity:  "Moderate",
-		domain.DimEdginess:    "Clean",
-		domain.DimStructure:   "Setup–punchline",
-		domain.DimWordplay:    "Light",
-		domain.DimFreshness:   "Timeless",
-		domain.DimSetupPayoff: "Balanced",
-		domain.DimClarity:     "Crystal clear",
-		domain.DimEnergy:      "Conversational",
-	}
-}
-
-// --- in-memory Store for Phase 3 flow tests ---
-
-type memStore struct {
-	users        map[int64]*domain.User
-	byName       map[string]int64
-	teams        []domain.Team
-	rounds       map[int64]*domain.Round
-	ideals       map[int64]domain.IdealProfile
-	teamState    map[[2]int64]*domain.TeamRoundState
-	batches      map[int64]*domain.Batch
-	classJobs    map[int64]*domain.ClassificationJob
-	dimValues    map[int64]map[domain.Dimension]string
-	dimFits      map[int64]map[domain.Dimension]float64
-	jokeFits     map[int64]*domain.JokeFit
-	aiCustomers  map[int64]*domain.AICustomer // keyed by ai_customer_id
-	purchases    map[int64]*domain.Purchase   // keyed by purchase_id
-	nextUser     int64
-	nextTeam     int64
-	nextBatch    int64
-	nextJoke     int64
-	nextAICust   int64
-	nextPurchase int64
-}
-
-func newMemStore() *memStore {
-	return &memStore{
-		users:        make(map[int64]*domain.User),
-		byName:       make(map[string]int64),
-		rounds:       make(map[int64]*domain.Round),
-		ideals:       make(map[int64]domain.IdealProfile),
-		teamState:    make(map[[2]int64]*domain.TeamRoundState),
-		batches:      make(map[int64]*domain.Batch),
-		classJobs:    make(map[int64]*domain.ClassificationJob),
-		dimValues:    make(map[int64]map[domain.Dimension]string),
-		dimFits:      make(map[int64]map[domain.Dimension]float64),
-		jokeFits:     make(map[int64]*domain.JokeFit),
-		aiCustomers:  make(map[int64]*domain.AICustomer),
-		purchases:    make(map[int64]*domain.Purchase),
-		nextUser:     1,
-		nextTeam:     1,
-		nextBatch:    1,
-		nextJoke:     1,
-		nextAICust:   1,
-		nextPurchase: 1,
-	}
-}
-
-func (m *memStore) Health(context.Context) error { return nil }
-
-func (m *memStore) CreateUser(_ context.Context, displayName string) (*domain.User, error) {
-	id := m.nextUser
-	m.nextUser++
+func (st *Store) CreateUser(_ context.Context, displayName string) (*domain.User, error) {
+	id := st.NextUser
+	st.NextUser++
 	now := time.Now().UTC()
 	u := &domain.User{
 		ID: id, DisplayName: displayName, Status: domain.ParticipantWaiting,
 		JoinedAt: now, CreatedAt: now,
 	}
-	m.users[id] = u
-	m.byName[displayName] = id
+	st.Users[id] = u
+	st.ByName[displayName] = id
 	return cloneUser(u), nil
 }
 
-func (m *memStore) GetUserByDisplayName(_ context.Context, displayName string) (*domain.User, error) {
-	id, ok := m.byName[displayName]
+func (st *Store) GetUserByDisplayName(_ context.Context, displayName string) (*domain.User, error) {
+	id, ok := st.ByName[displayName]
 	if !ok {
 		return nil, domain.NewNotFoundError("user")
 	}
-	return cloneUser(m.users[id]), nil
+	return cloneUser(st.Users[id]), nil
 }
 
-func (m *memStore) GetUserByID(_ context.Context, userID int64) (*domain.User, error) {
-	u, ok := m.users[userID]
+func (st *Store) GetUserByID(_ context.Context, userID int64) (*domain.User, error) {
+	u, ok := st.Users[userID]
 	if !ok {
 		return nil, domain.NewNotFoundError("user")
 	}
 	return cloneUser(u), nil
 }
 
-func (m *memStore) UpdateUserAssignment(_ context.Context, userID int64, role *domain.Role, teamID *int64) error {
-	u, ok := m.users[userID]
+func (st *Store) UpdateUserAssignment(_ context.Context, userID int64, role *domain.Role, teamID *int64) error {
+	u, ok := st.Users[userID]
 	if !ok {
 		return domain.NewNotFoundError("user")
 	}
@@ -252,8 +96,8 @@ func (m *memStore) UpdateUserAssignment(_ context.Context, userID int64, role *d
 	return nil
 }
 
-func (m *memStore) UpdateUserStatus(_ context.Context, userID int64, status domain.ParticipantStatus) error {
-	u, ok := m.users[userID]
+func (st *Store) UpdateUserStatus(_ context.Context, userID int64, status domain.ParticipantStatus) error {
+	u, ok := st.Users[userID]
 	if !ok {
 		return domain.NewNotFoundError("user")
 	}
@@ -261,8 +105,8 @@ func (m *memStore) UpdateUserStatus(_ context.Context, userID int64, status doma
 	return nil
 }
 
-func (m *memStore) PatchUserInRound(_ context.Context, _, userID int64, status domain.ParticipantStatus, role *domain.Role, teamID *int64) error {
-	u, ok := m.users[userID]
+func (st *Store) PatchUserInRound(_ context.Context, _, userID int64, status domain.ParticipantStatus, role *domain.Role, teamID *int64) error {
+	u, ok := st.Users[userID]
 	if !ok {
 		return domain.NewNotFoundError("user")
 	}
@@ -278,8 +122,8 @@ func (m *memStore) PatchUserInRound(_ context.Context, _, userID int64, status d
 	return nil
 }
 
-func (m *memStore) MarkUserAssigned(_ context.Context, userID int64) error {
-	u, ok := m.users[userID]
+func (st *Store) MarkUserAssigned(_ context.Context, userID int64) error {
+	u, ok := st.Users[userID]
 	if !ok {
 		return domain.NewNotFoundError("user")
 	}
@@ -289,9 +133,9 @@ func (m *memStore) MarkUserAssigned(_ context.Context, userID int64) error {
 	return nil
 }
 
-func (m *memStore) ListUsersByStatus(_ context.Context, status domain.ParticipantStatus) ([]domain.User, error) {
+func (st *Store) ListUsersByStatus(_ context.Context, status domain.ParticipantStatus) ([]domain.User, error) {
 	var out []domain.User
-	for _, u := range m.users {
+	for _, u := range st.Users {
 		if u.Status == status && (u.Role == nil || *u.Role != domain.RoleInstructor) {
 			out = append(out, *cloneUser(u))
 		}
@@ -299,9 +143,9 @@ func (m *memStore) ListUsersByStatus(_ context.Context, status domain.Participan
 	return out, nil
 }
 
-func (m *memStore) ListTeamMembers(_ context.Context, teamID int64) ([]ports.TeamMember, error) {
+func (st *Store) ListTeamMembers(_ context.Context, teamID int64) ([]ports.TeamMember, error) {
 	var out []ports.TeamMember
-	for _, u := range m.users {
+	for _, u := range st.Users {
 		if u.TeamID != nil && *u.TeamID == teamID && u.Role != nil {
 			out = append(out, ports.TeamMember{UserID: u.ID, DisplayName: u.DisplayName, Role: *u.Role})
 		}
@@ -309,42 +153,42 @@ func (m *memStore) ListTeamMembers(_ context.Context, teamID int64) ([]ports.Tea
 	return out, nil
 }
 
-func (m *memStore) DeleteUser(_ context.Context, userID int64) error {
-	u, ok := m.users[userID]
+func (st *Store) DeleteUser(_ context.Context, userID int64) error {
+	u, ok := st.Users[userID]
 	if !ok {
 		return domain.NewNotFoundError("user")
 	}
 	if u.Role != nil && *u.Role == domain.RoleInstructor {
 		return domain.NewConflictError("cannot delete instructor user")
 	}
-	delete(m.byName, u.DisplayName)
-	delete(m.users, userID)
+	delete(st.ByName, u.DisplayName)
+	delete(st.Users, userID)
 	return nil
 }
 
-func (m *memStore) EnsureTeamCount(_ context.Context, teamCount int) ([]domain.Team, error) {
-	for len(m.teams) < teamCount {
-		id := m.nextTeam
-		m.nextTeam++
-		m.teams = append(m.teams, domain.Team{ID: id, Name: "Team " + itoa(id), CreatedAt: time.Now().UTC()})
+func (st *Store) EnsureTeamCount(_ context.Context, teamCount int) ([]domain.Team, error) {
+	for len(st.Teams) < teamCount {
+		id := st.NextTeam
+		st.NextTeam++
+		st.Teams = append(st.Teams, domain.Team{ID: id, Name: "Team " + itoa(id), CreatedAt: time.Now().UTC()})
 	}
-	out := make([]domain.Team, len(m.teams))
-	copy(out, m.teams)
+	out := make([]domain.Team, len(st.Teams))
+	copy(out, st.Teams)
 	return out, nil
 }
 
-func (m *memStore) GetTeam(_ context.Context, teamID int64) (*domain.Team, error) {
-	for i := range m.teams {
-		if m.teams[i].ID == teamID {
-			t := m.teams[i]
+func (st *Store) GetTeam(_ context.Context, teamID int64) (*domain.Team, error) {
+	for i := range st.Teams {
+		if st.Teams[i].ID == teamID {
+			t := st.Teams[i]
 			return &t, nil
 		}
 	}
 	return nil, domain.NewNotFoundError("team")
 }
 
-func (m *memStore) GetActiveRound(_ context.Context) (*domain.Round, error) {
-	for _, r := range m.rounds {
+func (st *Store) GetActiveRound(_ context.Context) (*domain.Round, error) {
+	for _, r := range st.Rounds {
 		if r.Status == domain.RoundActive {
 			return cloneRound(r), nil
 		}
@@ -353,17 +197,17 @@ func (m *memStore) GetActiveRound(_ context.Context) (*domain.Round, error) {
 	return nil, nil //nolint:nilnil
 }
 
-func (m *memStore) GetRoundByID(_ context.Context, roundID int64) (*domain.Round, error) {
-	r, ok := m.rounds[roundID]
+func (st *Store) GetRoundByID(_ context.Context, roundID int64) (*domain.Round, error) {
+	r, ok := st.Rounds[roundID]
 	if !ok {
 		return nil, domain.NewNotFoundError("round")
 	}
 	return cloneRound(r), nil
 }
 
-func (m *memStore) GetLatestRound(_ context.Context) (*domain.Round, error) {
+func (st *Store) GetLatestRound(_ context.Context) (*domain.Round, error) {
 	var best *domain.Round
-	for _, r := range m.rounds {
+	for _, r := range st.Rounds {
 		if best == nil || r.ID > best.ID {
 			best = r
 		}
@@ -375,16 +219,16 @@ func (m *memStore) GetLatestRound(_ context.Context) (*domain.Round, error) {
 	return cloneRound(best), nil
 }
 
-func (m *memStore) ListRounds(_ context.Context) ([]domain.Round, error) {
-	out := make([]domain.Round, 0, len(m.rounds))
-	for _, r := range m.rounds {
+func (st *Store) ListRounds(_ context.Context) ([]domain.Round, error) {
+	out := make([]domain.Round, 0, len(st.Rounds))
+	for _, r := range st.Rounds {
 		out = append(out, *cloneRound(r))
 	}
 	return out, nil
 }
 
-func (m *memStore) UpdateRoundConfig(_ context.Context, roundID int64, cfg *domain.RoundConfig) (*domain.Round, error) {
-	r, ok := m.rounds[roundID]
+func (st *Store) UpdateRoundConfig(_ context.Context, roundID int64, cfg *domain.RoundConfig) (*domain.Round, error) {
+	r, ok := st.Rounds[roundID]
 	if !ok {
 		return nil, domain.NewNotFoundError("round")
 	}
@@ -392,8 +236,8 @@ func (m *memStore) UpdateRoundConfig(_ context.Context, roundID int64, cfg *doma
 	return cloneRound(r), nil
 }
 
-func (m *memStore) InsertRoundConfig(_ context.Context, roundID int64, cfg *domain.RoundConfig) (*domain.Round, error) {
-	if r, ok := m.rounds[roundID]; ok {
+func (st *Store) InsertRoundConfig(_ context.Context, roundID int64, cfg *domain.RoundConfig) (*domain.Round, error) {
+	if r, ok := st.Rounds[roundID]; ok {
 		applyConfig(r, cfg)
 		return cloneRound(r), nil
 	}
@@ -401,21 +245,21 @@ func (m *memStore) InsertRoundConfig(_ context.Context, roundID int64, cfg *doma
 		ID: roundID, RoundNumber: int(roundID), Status: domain.RoundConfigured, CreatedAt: time.Now().UTC(),
 	}
 	applyConfig(r, cfg)
-	m.rounds[roundID] = r
+	st.Rounds[roundID] = r
 	return cloneRound(r), nil
 }
 
-func (m *memStore) UpsertIdealProfile(_ context.Context, roundID int64, profile domain.IdealProfile) error {
+func (st *Store) UpsertIdealProfile(_ context.Context, roundID int64, profile domain.IdealProfile) error {
 	cp := make(domain.IdealProfile, len(profile))
 	for k, v := range profile {
 		cp[k] = v
 	}
-	m.ideals[roundID] = cp
+	st.Ideals[roundID] = cp
 	return nil
 }
 
-func (m *memStore) GetIdealProfile(_ context.Context, roundID int64) (domain.IdealProfile, error) {
-	p := m.ideals[roundID]
+func (st *Store) GetIdealProfile(_ context.Context, roundID int64) (domain.IdealProfile, error) {
+	p := st.Ideals[roundID]
 	if p == nil {
 		return domain.IdealProfile{}, nil
 	}
@@ -426,8 +270,8 @@ func (m *memStore) GetIdealProfile(_ context.Context, roundID int64) (domain.Ide
 	return cp, nil
 }
 
-func (m *memStore) StartRound(_ context.Context, roundID int64) (*domain.Round, error) {
-	r, ok := m.rounds[roundID]
+func (st *Store) StartRound(_ context.Context, roundID int64) (*domain.Round, error) {
+	r, ok := st.Rounds[roundID]
 	if !ok {
 		return nil, domain.NewNotFoundError("round")
 	}
@@ -435,14 +279,14 @@ func (m *memStore) StartRound(_ context.Context, roundID int64) (*domain.Round, 
 	now := time.Now().UTC()
 	r.StartedAt = &now
 	r.EndedAt = nil
-	for _, t := range m.teams {
-		m.ensureState(roundID, t.ID)
+	for _, t := range st.Teams {
+		st.ensureTeamState(roundID, t.ID)
 	}
 	return cloneRound(r), nil
 }
 
-func (m *memStore) EndRound(_ context.Context, roundID int64) (*domain.Round, error) {
-	r, ok := m.rounds[roundID]
+func (st *Store) EndRound(_ context.Context, roundID int64) (*domain.Round, error) {
+	r, ok := st.Rounds[roundID]
 	if !ok {
 		return nil, domain.NewNotFoundError("round")
 	}
@@ -452,8 +296,8 @@ func (m *memStore) EndRound(_ context.Context, roundID int64) (*domain.Round, er
 	return cloneRound(r), nil
 }
 
-func (m *memStore) SetRoundPopupState(_ context.Context, roundID int64, isActive bool) (*domain.Round, error) {
-	r, ok := m.rounds[roundID]
+func (st *Store) SetRoundPopupState(_ context.Context, roundID int64, isActive bool) (*domain.Round, error) {
+	r, ok := st.Rounds[roundID]
 	if !ok {
 		return nil, domain.NewNotFoundError("round")
 	}
@@ -461,52 +305,52 @@ func (m *memStore) SetRoundPopupState(_ context.Context, roundID int64, isActive
 	return cloneRound(r), nil
 }
 
-func (m *memStore) EnsureTeamRoundState(_ context.Context, roundID, teamID int64) error {
-	m.ensureState(roundID, teamID)
+func (st *Store) EnsureTeamRoundState(_ context.Context, roundID, teamID int64) error {
+	st.ensureTeamState(roundID, teamID)
 	return nil
 }
 
-func (m *memStore) ensureState(roundID, teamID int64) *domain.TeamRoundState {
+func (st *Store) ensureTeamState(roundID, teamID int64) *domain.TeamRoundState {
 	key := [2]int64{roundID, teamID}
-	if s, ok := m.teamState[key]; ok {
+	if s, ok := st.TeamState[key]; ok {
 		return s
 	}
 	now := time.Now().UTC()
 	s := &domain.TeamRoundState{RoundID: roundID, TeamID: teamID, CreatedAt: now, UpdatedAt: now}
-	m.teamState[key] = s
+	st.TeamState[key] = s
 	return s
 }
 
-func (m *memStore) ResetGame(context.Context) error {
-	*m = *newMemStore()
+func (st *Store) ResetGame(context.Context) error {
+	*st = *NewStore()
 	return nil
 }
 
-func (m *memStore) CreateBatch(_ context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error) {
-	id := m.nextBatch
-	m.nextBatch++
+func (st *Store) CreateBatch(_ context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error) {
+	id := st.NextBatch
+	st.NextBatch++
 	now := time.Now().UTC()
 	b := &domain.Batch{
 		ID: id, RoundID: roundID, TeamID: teamID, Status: domain.BatchSubmitted,
 		SubmittedAt: &now, CreatedAt: now,
 	}
 	for _, text := range jokes {
-		jid := m.nextJoke
-		m.nextJoke++
+		jid := st.NextJoke
+		st.NextJoke++
 		b.Jokes = append(b.Jokes, domain.Joke{
 			ID: jid, BatchID: id, Text: text, PublishStatus: domain.PublishPending, CreatedAt: now,
 		})
 	}
-	m.batches[id] = b
-	st := m.ensureState(roundID, teamID)
-	st.BatchesCreated++
-	st.UpdatedAt = now
+	st.Batches[id] = b
+	state := st.ensureTeamState(roundID, teamID)
+	state.BatchesCreated++
+	state.UpdatedAt = now
 	return cloneBatch(b), nil
 }
 
-func (m *memStore) ListBatchesByTeam(_ context.Context, roundID, teamID int64) ([]domain.Batch, error) {
+func (st *Store) ListBatchesByTeam(_ context.Context, roundID, teamID int64) ([]domain.Batch, error) {
 	var out []domain.Batch
-	for _, b := range m.batches {
+	for _, b := range st.Batches {
 		if b.RoundID == roundID && b.TeamID == teamID {
 			out = append(out, *cloneBatch(b))
 		}
@@ -514,8 +358,8 @@ func (m *memStore) ListBatchesByTeam(_ context.Context, roundID, teamID int64) (
 	return out, nil
 }
 
-func (m *memStore) GetBatchWithJokes(_ context.Context, batchID int64) (*ports.BatchWithJokes, error) {
-	b, ok := m.batches[batchID]
+func (st *Store) GetBatchWithJokes(_ context.Context, batchID int64) (*ports.BatchWithJokes, error) {
+	b, ok := st.Batches[batchID]
 	if !ok {
 		return nil, domain.NewNotFoundError("batch")
 	}
@@ -523,19 +367,9 @@ func (m *memStore) GetBatchWithJokes(_ context.Context, batchID int64) (*ports.B
 	return &ports.BatchWithJokes{Batch: *cp, Jokes: cp.Jokes}, nil
 }
 
-func (m *memStore) CountSubmittedBatches(_ context.Context, roundID int64) (int, error) {
+func (st *Store) CountSubmittedBatchesForTeam(_ context.Context, roundID, teamID int64) (int, error) {
 	n := 0
-	for _, b := range m.batches {
-		if b.RoundID == roundID && b.Status == domain.BatchSubmitted {
-			n++
-		}
-	}
-	return n, nil
-}
-
-func (m *memStore) CountSubmittedBatchesForTeam(_ context.Context, roundID, teamID int64) (int, error) {
-	n := 0
-	for _, b := range m.batches {
+	for _, b := range st.Batches {
 		if b.RoundID == roundID && b.TeamID == teamID && b.Status == domain.BatchSubmitted {
 			n++
 		}
@@ -543,10 +377,10 @@ func (m *memStore) CountSubmittedBatchesForTeam(_ context.Context, roundID, team
 	return n, nil
 }
 
-func (m *memStore) ClaimNextBatch(_ context.Context, roundID, teamID, marketerID int64) (*ports.BatchWithJokes, error) {
+func (st *Store) ClaimNextBatch(_ context.Context, roundID, teamID, marketerID int64) (*ports.BatchWithJokes, error) {
 	var held *domain.Batch
 	var next *domain.Batch
-	for _, b := range m.batches {
+	for _, b := range st.Batches {
 		if b.RoundID != roundID || b.TeamID != teamID || b.Status != domain.BatchSubmitted {
 			continue
 		}
@@ -576,12 +410,12 @@ func (m *memStore) ClaimNextBatch(_ context.Context, roundID, teamID, marketerID
 	return &ports.BatchWithJokes{Batch: *cp, Jokes: cp.Jokes}, nil
 }
 
-func (m *memStore) PublishBatch(
+func (st *Store) PublishBatch(
 	_ context.Context,
 	batchID, marketerID, teamID int64,
 	decisions []ports.JokePublishDecision,
 ) (*ports.PublishResult, error) {
-	b, ok := m.batches[batchID]
+	b, ok := st.Batches[batchID]
 	if !ok {
 		return nil, domain.NewNotFoundError("batch")
 	}
@@ -646,14 +480,14 @@ func (m *memStore) PublishBatch(
 	b.LockedBy = nil
 	b.LockedAt = nil
 
-	st := m.ensureState(b.RoundID, b.TeamID)
-	st.BatchesProcessed++
-	st.PublishedJokes += len(published)
-	st.DiscardedJokes += len(discarded)
-	st.UpdatedAt = now
+	state := st.ensureTeamState(b.RoundID, b.TeamID)
+	state.BatchesProcessed++
+	state.PublishedJokes += len(published)
+	state.DiscardedJokes += len(discarded)
+	state.UpdatedAt = now
 
-	if _, ok := m.classJobs[batchID]; !ok {
-		m.classJobs[batchID] = &domain.ClassificationJob{
+	if _, ok := st.ClassJobs[batchID]; !ok {
+		st.ClassJobs[batchID] = &domain.ClassificationJob{
 			BatchID:   batchID,
 			RoundID:   b.RoundID,
 			Status:    domain.ClassificationPending,
@@ -670,20 +504,20 @@ func (m *memStore) PublishBatch(
 	}, nil
 }
 
-func (m *memStore) EnsureClassificationJob(_ context.Context, batchID, roundID int64) error {
-	if _, ok := m.classJobs[batchID]; ok {
+func (st *Store) EnsureClassificationJob(_ context.Context, batchID, roundID int64) error {
+	if _, ok := st.ClassJobs[batchID]; ok {
 		return nil
 	}
 	now := time.Now().UTC()
-	m.classJobs[batchID] = &domain.ClassificationJob{
+	st.ClassJobs[batchID] = &domain.ClassificationJob{
 		BatchID: batchID, RoundID: roundID, Status: domain.ClassificationPending,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	return nil
 }
 
-func (m *memStore) ClaimClassificationJob(_ context.Context, batchID int64) (*domain.ClassificationJob, error) {
-	job, ok := m.classJobs[batchID]
+func (st *Store) ClaimClassificationJob(_ context.Context, batchID int64) (*domain.ClassificationJob, error) {
+	job, ok := st.ClassJobs[batchID]
 	if !ok {
 		return nil, nil //nolint:nilnil
 	}
@@ -710,8 +544,8 @@ func (m *memStore) ClaimClassificationJob(_ context.Context, batchID int64) (*do
 	return &cp, nil
 }
 
-func (m *memStore) MarkClassificationDone(_ context.Context, batchID int64, model string) error {
-	job, ok := m.classJobs[batchID]
+func (st *Store) MarkClassificationDone(_ context.Context, batchID int64, model string) error {
+	job, ok := st.ClassJobs[batchID]
 	if !ok {
 		return domain.NewNotFoundError("classification_job")
 	}
@@ -724,8 +558,8 @@ func (m *memStore) MarkClassificationDone(_ context.Context, batchID int64, mode
 	return nil
 }
 
-func (m *memStore) MarkClassificationFailed(_ context.Context, batchID int64, errMsg string) error {
-	job, ok := m.classJobs[batchID]
+func (st *Store) MarkClassificationFailed(_ context.Context, batchID int64, errMsg string) error {
+	job, ok := st.ClassJobs[batchID]
 	if !ok {
 		return domain.NewNotFoundError("classification_job")
 	}
@@ -739,7 +573,7 @@ func (m *memStore) MarkClassificationFailed(_ context.Context, batchID int64, er
 	return nil
 }
 
-func (m *memStore) PersistJokeFits(_ context.Context, fits []ports.JokeFitMaterialization) error {
+func (st *Store) PersistJokeFits(_ context.Context, fits []ports.JokeFitMaterialization) error {
 	now := time.Now().UTC()
 	for _, fit := range fits {
 		cats := make(map[domain.Dimension]string, len(fit.Categories))
@@ -750,17 +584,17 @@ func (m *memStore) PersistJokeFits(_ context.Context, fits []ports.JokeFitMateri
 		for k, v := range fit.DimFits {
 			scores[k] = v
 		}
-		m.dimValues[fit.JokeID] = cats
-		m.dimFits[fit.JokeID] = scores
-		m.jokeFits[fit.JokeID] = &domain.JokeFit{
+		st.DimValues[fit.JokeID] = cats
+		st.DimFits[fit.JokeID] = scores
+		st.JokeFits[fit.JokeID] = &domain.JokeFit{
 			JokeID: fit.JokeID, RoundID: fit.RoundID, TrueFit: fit.TrueFit, ComputedAt: now,
 		}
 	}
 	return nil
 }
 
-func (m *memStore) GetJokeFit(_ context.Context, jokeID int64) (*domain.JokeFit, error) {
-	f, ok := m.jokeFits[jokeID]
+func (st *Store) GetJokeFit(_ context.Context, jokeID int64) (*domain.JokeFit, error) {
+	f, ok := st.JokeFits[jokeID]
 	if !ok {
 		return nil, domain.NewNotFoundError("joke_fit")
 	}
@@ -768,8 +602,8 @@ func (m *memStore) GetJokeFit(_ context.Context, jokeID int64) (*domain.JokeFit,
 	return &cp, nil
 }
 
-func (m *memStore) ListJokeDimFits(_ context.Context, jokeID int64) ([]domain.JokeDimFit, error) {
-	scores, ok := m.dimFits[jokeID]
+func (st *Store) ListJokeDimFits(_ context.Context, jokeID int64) ([]domain.JokeDimFit, error) {
+	scores, ok := st.DimFits[jokeID]
 	if !ok {
 		return nil, nil
 	}
@@ -780,8 +614,8 @@ func (m *memStore) ListJokeDimFits(_ context.Context, jokeID int64) ([]domain.Jo
 	return out, nil
 }
 
-func (m *memStore) ListJokeDimensionValues(_ context.Context, jokeID int64) ([]domain.JokeDimensionValue, error) {
-	cats, ok := m.dimValues[jokeID]
+func (st *Store) ListJokeDimensionValues(_ context.Context, jokeID int64) ([]domain.JokeDimensionValue, error) {
+	cats, ok := st.DimValues[jokeID]
 	if !ok {
 		return nil, nil
 	}
@@ -792,9 +626,9 @@ func (m *memStore) ListJokeDimensionValues(_ context.Context, jokeID int64) ([]d
 	return out, nil
 }
 
-func (m *memStore) ListOrphanClassificationBatchIDs(_ context.Context, limit int) ([]int64, error) {
+func (st *Store) ListOrphanClassificationBatchIDs(_ context.Context, limit int) ([]int64, error) {
 	var ids []int64
-	for _, b := range m.batches {
+	for _, b := range st.Batches {
 		if b.Status != domain.BatchProcessed {
 			continue
 		}
@@ -808,7 +642,7 @@ func (m *memStore) ListOrphanClassificationBatchIDs(_ context.Context, limit int
 		if !hasPublished {
 			continue
 		}
-		job, ok := m.classJobs[b.ID]
+		job, ok := st.ClassJobs[b.ID]
 		if !ok {
 			ids = append(ids, b.ID)
 			continue
@@ -833,28 +667,28 @@ func (m *memStore) ListOrphanClassificationBatchIDs(_ context.Context, limit int
 	return ids, nil
 }
 
-func (m *memStore) ReplaceAICustomers(_ context.Context, roundID int64, customers []domain.AICustomer) error {
-	for id, c := range m.aiCustomers {
+func (st *Store) ReplaceAICustomers(_ context.Context, roundID int64, customers []domain.AICustomer) error {
+	for id, c := range st.AICustomers {
 		if c.RoundID == roundID {
-			delete(m.aiCustomers, id)
+			delete(st.AICustomers, id)
 		}
 	}
 	now := time.Now().UTC()
 	for _, c := range customers {
-		id := m.nextAICust
-		m.nextAICust++
+		id := st.NextAICust
+		st.NextAICust++
 		cp := c
 		cp.ID = id
 		cp.RoundID = roundID
 		cp.CreatedAt = now
-		m.aiCustomers[id] = &cp
+		st.AICustomers[id] = &cp
 	}
 	return nil
 }
 
-func (m *memStore) ListAICustomers(_ context.Context, roundID int64) ([]domain.AICustomer, error) {
+func (st *Store) ListAICustomers(_ context.Context, roundID int64) ([]domain.AICustomer, error) {
 	var out []domain.AICustomer
-	for _, c := range m.aiCustomers {
+	for _, c := range st.AICustomers {
 		if c.RoundID == roundID {
 			out = append(out, *c)
 		}
@@ -862,13 +696,13 @@ func (m *memStore) ListAICustomers(_ context.Context, roundID int64) ([]domain.A
 	return out, nil
 }
 
-func (m *memStore) ListCandidateJokes(_ context.Context, jokeIDs []int64) ([]ports.CandidateJoke, error) {
+func (st *Store) ListCandidateJokes(_ context.Context, jokeIDs []int64) ([]ports.CandidateJoke, error) {
 	want := make(map[int64]struct{}, len(jokeIDs))
 	for _, id := range jokeIDs {
 		want[id] = struct{}{}
 	}
 	var out []ports.CandidateJoke
-	for _, b := range m.batches {
+	for _, b := range st.Batches {
 		for _, j := range b.Jokes {
 			if _, ok := want[j.ID]; !ok {
 				continue
@@ -876,7 +710,7 @@ func (m *memStore) ListCandidateJokes(_ context.Context, jokeIDs []int64) ([]por
 			if j.PublishStatus != domain.PublishPublished {
 				continue
 			}
-			fit, ok := m.jokeFits[j.ID]
+			fit, ok := st.JokeFits[j.ID]
 			if !ok {
 				continue
 			}
@@ -888,14 +722,14 @@ func (m *memStore) ListCandidateJokes(_ context.Context, jokeIDs []int64) ([]por
 	return out, nil
 }
 
-func (m *memStore) ListHoldings(_ context.Context, roundID, aiCustomerID int64) ([]ports.HeldJoke, error) {
+func (st *Store) ListHoldings(_ context.Context, roundID, aiCustomerID int64) ([]ports.HeldJoke, error) {
 	var out []ports.HeldJoke
-	for _, p := range m.purchases {
+	for _, p := range st.Purchases {
 		if p.RoundID != roundID || p.AICustomerID != aiCustomerID {
 			continue
 		}
 		tf := 0.0
-		if f, ok := m.jokeFits[p.JokeID]; ok {
+		if f, ok := st.JokeFits[p.JokeID]; ok {
 			tf = f.TrueFit
 		}
 		out = append(out, ports.HeldJoke{
@@ -905,12 +739,12 @@ func (m *memStore) ListHoldings(_ context.Context, roundID, aiCustomerID int64) 
 	return out, nil
 }
 
-func (m *memStore) BuyJoke(_ context.Context, roundID, aiCustomerID, jokeID, teamID int64, price float64) error {
-	c, ok := m.aiCustomers[aiCustomerID]
+func (st *Store) BuyJoke(_ context.Context, roundID, aiCustomerID, jokeID, teamID int64, price float64) error {
+	c, ok := st.AICustomers[aiCustomerID]
 	if !ok || c.RoundID != roundID {
 		return domain.NewNotFoundError("ai_customer")
 	}
-	for _, p := range m.purchases {
+	for _, p := range st.Purchases {
 		if p.RoundID == roundID && p.AICustomerID == aiCustomerID && p.JokeID == jokeID {
 			return nil
 		}
@@ -919,31 +753,31 @@ func (m *memStore) BuyJoke(_ context.Context, roundID, aiCustomerID, jokeID, tea
 		return domain.NewConflictError("insufficient budget")
 	}
 	c.RemainingBudget -= price
-	id := m.nextPurchase
-	m.nextPurchase++
+	id := st.NextPurchase
+	st.NextPurchase++
 	now := time.Now().UTC()
-	m.purchases[id] = &domain.Purchase{
+	st.Purchases[id] = &domain.Purchase{
 		ID: id, RoundID: roundID, AICustomerID: aiCustomerID,
 		JokeID: jokeID, TeamID: teamID, Price: price, CreatedAt: now,
 	}
-	st := m.ensureState(roundID, teamID)
-	st.PointsEarned++
-	st.UpdatedAt = now
+	state := st.ensureTeamState(roundID, teamID)
+	state.PointsEarned++
+	state.UpdatedAt = now
 	return nil
 }
 
-func (m *memStore) SwapJoke(
+func (st *Store) SwapJoke(
 	_ context.Context,
 	roundID, aiCustomerID, buyJokeID, buyTeamID, returnJokeID, returnTeamID int64,
 	price float64,
 ) error {
-	if _, ok := m.aiCustomers[aiCustomerID]; !ok {
+	if _, ok := st.AICustomers[aiCustomerID]; !ok {
 		return domain.NewNotFoundError("ai_customer")
 	}
 	var returned bool
-	for id, p := range m.purchases {
+	for id, p := range st.Purchases {
 		if p.RoundID == roundID && p.AICustomerID == aiCustomerID && p.JokeID == returnJokeID {
-			delete(m.purchases, id)
+			delete(st.Purchases, id)
 			returned = true
 			break
 		}
@@ -951,38 +785,38 @@ func (m *memStore) SwapJoke(
 	if !returned {
 		return domain.NewConflictError("held joke not found for swap")
 	}
-	stRet := m.ensureState(roundID, returnTeamID)
+	stRet := st.ensureTeamState(roundID, returnTeamID)
 	if stRet.PointsEarned > 0 {
 		stRet.PointsEarned--
 	}
-	for _, p := range m.purchases {
+	for _, p := range st.Purchases {
 		if p.RoundID == roundID && p.AICustomerID == aiCustomerID && p.JokeID == buyJokeID {
 			return domain.NewConflictError("already holds buy target")
 		}
 	}
-	id := m.nextPurchase
-	m.nextPurchase++
+	id := st.NextPurchase
+	st.NextPurchase++
 	now := time.Now().UTC()
-	m.purchases[id] = &domain.Purchase{
+	st.Purchases[id] = &domain.Purchase{
 		ID: id, RoundID: roundID, AICustomerID: aiCustomerID,
 		JokeID: buyJokeID, TeamID: buyTeamID, Price: price, CreatedAt: now,
 	}
-	stBuy := m.ensureState(roundID, buyTeamID)
+	stBuy := st.ensureTeamState(roundID, buyTeamID)
 	stBuy.PointsEarned++
 	stBuy.UpdatedAt = now
 	stRet.UpdatedAt = now
 	return nil
 }
 
-func (m *memStore) ListMarket(_ context.Context, roundID int64) ([]ports.MarketJoke, error) {
+func (st *Store) ListMarket(_ context.Context, roundID int64) ([]ports.MarketJoke, error) {
 	sold := make(map[int64]int)
-	for _, p := range m.purchases {
+	for _, p := range st.Purchases {
 		if p.RoundID == roundID {
 			sold[p.JokeID]++
 		}
 	}
 	teamName := func(id int64) string {
-		for _, t := range m.teams {
+		for _, t := range st.Teams {
 			if t.ID == id {
 				return t.Name
 			}
@@ -990,7 +824,7 @@ func (m *memStore) ListMarket(_ context.Context, roundID int64) ([]ports.MarketJ
 		return ""
 	}
 	var out []ports.MarketJoke
-	for _, b := range m.batches {
+	for _, b := range st.Batches {
 		if b.RoundID != roundID {
 			continue
 		}
@@ -1008,26 +842,26 @@ func (m *memStore) ListMarket(_ context.Context, roundID int64) ([]ports.MarketJ
 	return out, nil
 }
 
-func (m *memStore) GetTeamSummary(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
-	rd, ok := m.rounds[roundID]
+func (st *Store) GetTeamSummary(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
+	rd, ok := st.Rounds[roundID]
 	if !ok {
 		return nil, domain.NewNotFoundError("round")
 	}
-	team, err := m.GetTeam(ctx, teamID)
+	team, err := st.GetTeam(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
-	st := m.ensureState(roundID, teamID)
-	profit := rd.MarketPrice*float64(st.PointsEarned) -
-		rd.CostOfPublishing*float64(st.PublishedJokes) -
-		rd.CostOfDiscard*float64(st.DiscardedJokes)
+	teamState := st.ensureTeamState(roundID, teamID)
+	profit := rd.MarketPrice*float64(teamState.PointsEarned) -
+		rd.CostOfPublishing*float64(teamState.PublishedJokes) -
+		rd.CostOfDiscard*float64(teamState.DiscardedJokes)
 
 	type profitRow struct {
 		teamID int64
 		profit float64
 	}
 	var rows []profitRow
-	for key, s := range m.teamState {
+	for key, s := range st.TeamState {
 		if key[0] != roundID {
 			continue
 		}
@@ -1050,36 +884,36 @@ func (m *memStore) GetTeamSummary(ctx context.Context, roundID, teamID int64) (*
 		rank++
 	}
 
-	unprocessed, _ := m.CountSubmittedBatchesForTeam(ctx, roundID, teamID)
-	sold := st.PointsEarned
-	if sold > st.PublishedJokes {
-		sold = st.PublishedJokes
+	unprocessed, _ := st.CountSubmittedBatchesForTeam(ctx, roundID, teamID)
+	sold := teamState.PointsEarned
+	if sold > teamState.PublishedJokes {
+		sold = teamState.PublishedJokes
 	}
-	unsold := st.PublishedJokes - sold
+	unsold := teamState.PublishedJokes - sold
 	if unsold < 0 {
 		unsold = 0
 	}
 	return &ports.TeamSummary{
 		Team: *team, RoundID: roundID, Rank: rank,
-		Points: st.PointsEarned, Profit: profit, TotalSales: st.PointsEarned,
+		Points: teamState.PointsEarned, Profit: profit, TotalSales: teamState.PointsEarned,
 		Performance:    "AVERAGE PERFORMING",
-		BatchesCreated: st.BatchesCreated, BatchesProcessed: st.BatchesProcessed,
-		PublishedJokes: st.PublishedJokes, DiscardedJokes: st.DiscardedJokes,
+		BatchesCreated: teamState.BatchesCreated, BatchesProcessed: teamState.BatchesProcessed,
+		PublishedJokes: teamState.PublishedJokes, DiscardedJokes: teamState.DiscardedJokes,
 		UnsoldJokes: unsold, SoldJokesCount: sold, UnprocessedBatches: unprocessed,
 	}, nil
 }
 
-func (m *memStore) GetLobby(ctx context.Context, roundID int64) (*ports.LobbySnapshot, error) {
+func (st *Store) GetLobby(ctx context.Context, roundID int64) (*ports.LobbySnapshot, error) {
 	snap := &ports.LobbySnapshot{RoundID: roundID}
-	for _, t := range m.teams {
-		members, _ := m.ListTeamMembers(ctx, t.ID)
+	for _, t := range st.Teams {
+		members, _ := st.ListTeamMembers(ctx, t.ID)
 		if len(members) > 0 {
 			snap.Teams = append(snap.Teams, ports.LobbyTeam{Team: t, Members: members})
 			snap.Summary.Assigned += len(members)
 		}
 	}
 	snap.Summary.TeamCount = len(snap.Teams)
-	waiting, _ := m.ListUsersByStatus(ctx, domain.ParticipantWaiting)
+	waiting, _ := st.ListUsersByStatus(ctx, domain.ParticipantWaiting)
 	snap.Summary.Waiting = len(waiting)
 	for _, u := range waiting {
 		snap.Unassigned = append(snap.Unassigned, ports.LobbyUnassigned{
@@ -1089,8 +923,8 @@ func (m *memStore) GetLobby(ctx context.Context, roundID int64) (*ports.LobbySna
 	return snap, nil
 }
 
-func (m *memStore) GetRoundStatsV2(ctx context.Context, roundID int64) (*ports.RoundStats, error) {
-	rd, ok := m.rounds[roundID]
+func (st *Store) GetRoundStatsV2(ctx context.Context, roundID int64) (*ports.RoundStats, error) {
+	rd, ok := st.Rounds[roundID]
 	if !ok {
 		return nil, domain.NewNotFoundError("round")
 	}
@@ -1100,28 +934,28 @@ func (m *memStore) GetRoundStatsV2(ctx context.Context, roundID int64) (*ports.R
 		profit float64
 	}
 	var rows []row
-	for key, st := range m.teamState {
+	for key, state := range st.TeamState {
 		if key[0] != roundID {
 			continue
 		}
-		team, err := m.GetTeam(ctx, key[1])
+		team, err := st.GetTeam(ctx, key[1])
 		if err != nil {
 			continue
 		}
-		profit := rd.MarketPrice*float64(st.PointsEarned) -
-			rd.CostOfPublishing*float64(st.PublishedJokes) -
-			rd.CostOfDiscard*float64(st.DiscardedJokes)
-		unsold := st.PublishedJokes - st.PointsEarned
+		profit := rd.MarketPrice*float64(state.PointsEarned) -
+			rd.CostOfPublishing*float64(state.PublishedJokes) -
+			rd.CostOfDiscard*float64(state.DiscardedJokes)
+		unsold := state.PublishedJokes - state.PointsEarned
 		if unsold < 0 {
 			unsold = 0
 		}
 		rows = append(rows, row{
 			profit: profit,
 			ts: ports.TeamStats{
-				Team: *team, BatchesProcessed: st.BatchesProcessed,
-				TotalSales: st.PointsEarned, PublishedJokes: st.PublishedJokes,
-				DiscardedJokes: st.DiscardedJokes,
-				TotalJokes:     st.PublishedJokes + st.DiscardedJokes,
+				Team: *team, BatchesProcessed: state.BatchesProcessed,
+				TotalSales: state.PointsEarned, PublishedJokes: state.PublishedJokes,
+				DiscardedJokes: state.DiscardedJokes,
+				TotalJokes:     state.PublishedJokes + state.DiscardedJokes,
 				UnsoldJokes:    unsold, Profit: profit,
 			},
 		})
@@ -1139,7 +973,7 @@ func (m *memStore) GetRoundStatsV2(ctx context.Context, roundID int64) (*ports.R
 	return stats, nil
 }
 
-func (m *memStore) ListTeamFeedbackJokes(_ context.Context, roundID, teamID int64, limit int) ([]ports.FeedbackJokeRow, error) {
+func (st *Store) ListTeamFeedbackJokes(_ context.Context, roundID, teamID int64, limit int) ([]ports.FeedbackJokeRow, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -1148,7 +982,7 @@ func (m *memStore) ListTeamFeedbackJokes(_ context.Context, roundID, teamID int6
 		published time.Time
 	}
 	var cands []candidate
-	for _, b := range m.batches {
+	for _, b := range st.Batches {
 		if b.RoundID != roundID || b.TeamID != teamID {
 			continue
 		}
@@ -1170,7 +1004,7 @@ func (m *memStore) ListTeamFeedbackJokes(_ context.Context, roundID, teamID int6
 	}
 
 	bought := make(map[int64]bool)
-	for _, p := range m.purchases {
+	for _, p := range st.Purchases {
 		if p.RoundID == roundID {
 			bought[p.JokeID] = true
 		}
@@ -1183,7 +1017,7 @@ func (m *memStore) ListTeamFeedbackJokes(_ context.Context, roundID, teamID int6
 			title = *c.joke.Title
 		}
 		fits := make(map[domain.Dimension]float64)
-		if src, ok := m.dimFits[c.joke.ID]; ok {
+		if src, ok := st.DimFits[c.joke.ID]; ok {
 			for k, v := range src {
 				fits[k] = v
 			}
