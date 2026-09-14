@@ -115,7 +115,18 @@ func TestMarketingPublishFlow(t *testing.T) {
 	}
 }
 
-func TestPublishRequiresAtLeastOnePublished(t *testing.T) {
+// allDiscardFixture is a claimed two-joke batch on an ACTIVE round, with the
+// publish decisions already built to discard every joke. roundID doubles as the
+// round number in the in-memory store, so pass 1 for R1 rules and 2 for R2.
+type allDiscardFixture struct {
+	marketing *usecase.MarketingService
+	mkt       *domain.User
+	batchID   int64
+	decisions []ports.JokePublishDecision
+}
+
+func newAllDiscardFixture(t *testing.T, roundID int64) *allDiscardFixture {
+	t.Helper()
 	ctx := context.Background()
 	store := testutil.NewStore()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -126,29 +137,61 @@ func TestPublishRequiresAtLeastOnePublished(t *testing.T) {
 
 	defaults := domain.DefaultRoundConfig()
 	defaults.BatchSize = 2
-	_, _ = store.InsertRoundConfig(ctx, 1, &defaults)
+	_, _ = store.InsertRoundConfig(ctx, roundID, &defaults)
 	users := joinMany(t, session, []string{"A", "B", "C", "D"})
-	_, _ = instructor.Assign(ctx, 1, 2)
+	_, _ = instructor.Assign(ctx, roundID, 2)
 	cfg := defaults
-	_, _ = instructor.Config(ctx, 1, &cfg, testutil.ValidIdealProfile())
-	_, _ = instructor.StartRound(ctx, 1)
+	_, _ = instructor.Config(ctx, roundID, &cfg, testutil.ValidIdealProfile())
+	_, _ = instructor.StartRound(ctx, roundID)
 
 	jm := findJM(t, session, users)
 	mkt := findMarketingOnTeam(t, session, users, *jm.TeamID)
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"j1", "j2"}, "")
+	batch, err := batches.Submit(ctx, jm.ID, roundID, *jm.TeamID, []string{"j1", "j2"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	item, err := marketing.QueueNext(ctx, mkt.ID, 1)
+	item, err := marketing.QueueNext(ctx, mkt.ID, roundID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decisions := []ports.JokePublishDecision{
-		{JokeID: item.Jokes[0].ID, Title: "A", IsPublished: false},
-		{JokeID: item.Jokes[1].ID, Title: "B", IsPublished: false},
+	return &allDiscardFixture{
+		marketing: marketing,
+		mkt:       mkt,
+		batchID:   batch.ID,
+		decisions: []ports.JokePublishDecision{
+			{JokeID: item.Jokes[0].ID, Title: "A", IsPublished: false},
+			{JokeID: item.Jokes[1].ID, Title: "B", IsPublished: false},
+		},
 	}
-	_, err = marketing.Publish(ctx, mkt.ID, batch.ID, decisions)
+}
+
+// Round 1 keeps the >=1-published rule: the exercise asks Marketing to
+// prioritise a full batch, not to reject it wholesale.
+func TestPublishRequiresAtLeastOnePublishedInRound1(t *testing.T) {
+	f := newAllDiscardFixture(t, 1)
+
+	_, err := f.marketing.Publish(context.Background(), f.mkt.ID, f.batchID, f.decisions)
 	if err == nil || !domain.IsValidationError(err) {
 		t.Fatalf("expected NO_JOKE_PUBLISHED, got %v", err)
+	}
+}
+
+// Round 2 relaxes it: the JM may submit a single weak joke and Marketing has to
+// be able to pass on the whole batch.
+func TestPublishAllowsAllDiscardInRound2(t *testing.T) {
+	f := newAllDiscardFixture(t, 2)
+
+	result, err := f.marketing.Publish(context.Background(), f.mkt.ID, f.batchID, f.decisions)
+	if err != nil {
+		t.Fatalf("all-discard publish in round 2: %v", err)
+	}
+	if len(result.PublishedIDs) != 0 {
+		t.Fatalf("published %d jokes, want 0", len(result.PublishedIDs))
+	}
+	if len(result.DiscardedIDs) != len(f.decisions) {
+		t.Fatalf("discarded %d jokes, want %d", len(result.DiscardedIDs), len(f.decisions))
+	}
+	if result.Batch.Status != domain.BatchProcessed {
+		t.Fatalf("batch status = %v, want PROCESSED", result.Batch.Status)
 	}
 }

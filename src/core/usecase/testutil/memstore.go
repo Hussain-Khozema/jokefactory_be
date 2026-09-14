@@ -506,6 +506,7 @@ func (st *Store) PublishBatch(
 	_ context.Context,
 	batchID, marketerID, teamID int64,
 	decisions []ports.JokePublishDecision,
+	requireAtLeastOnePublished bool,
 ) (*ports.PublishResult, error) {
 	b, ok := st.Batches[batchID]
 	if !ok {
@@ -563,7 +564,7 @@ func (st *Store) PublishBatch(
 			discarded = append(discarded, d.JokeID)
 		}
 	}
-	if len(published) == 0 {
+	if requireAtLeastOnePublished && len(published) == 0 {
 		return nil, domain.NewValidationError("jokes", "NO_JOKE_PUBLISHED")
 	}
 

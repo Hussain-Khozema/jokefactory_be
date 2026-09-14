@@ -211,7 +211,13 @@ func (s *MarketingService) Publish(
 		}
 	}
 
-	result, err := s.repo.PublishBatch(ctx, batchID, user.ID, *user.TeamID, normalized)
+	// Round 1 asks Marketing to prioritise a full batch, so at least one joke
+	// must survive. Round 2 lets the JM submit a single weak joke, and passing on
+	// the whole batch is a legitimate decision there. The rule is game pedagogy,
+	// so it is decided here and handed to the repository as a flag.
+	requireAtLeastOnePublished := round.RoundNumber == 1
+
+	result, err := s.repo.PublishBatch(ctx, batchID, user.ID, *user.TeamID, normalized, requireAtLeastOnePublished)
 	if err != nil {
 		return nil, err
 	}

@@ -178,6 +178,7 @@ func (r *Repositories) PublishBatch(
 	ctx context.Context,
 	batchID, marketerID, teamID int64,
 	decisions []ports.JokePublishDecision,
+	requireAtLeastOnePublished bool,
 ) (*ports.PublishResult, error) {
 	var result *ports.PublishResult
 	err := r.pg.WithTx(ctx, func(tx pgx.Tx) error {
@@ -188,7 +189,7 @@ func (r *Repositories) PublishBatch(
 		if err != nil {
 			return err
 		}
-		published, discarded, err := applyPublishDecisions(ctx, tx, jokes, decisions)
+		published, discarded, err := applyPublishDecisions(ctx, tx, jokes, decisions, requireAtLeastOnePublished)
 		if err != nil {
 			return err
 		}
@@ -244,6 +245,7 @@ func applyPublishDecisions(
 	tx pgx.Tx,
 	jokes []domain.Joke,
 	decisions []ports.JokePublishDecision,
+	requireAtLeastOnePublished bool,
 ) (published, discarded []int64, err error) {
 	byID := make(map[int64]domain.Joke, len(jokes))
 	for _, j := range jokes {
@@ -294,7 +296,7 @@ func applyPublishDecisions(
 		}
 		discarded = append(discarded, d.JokeID)
 	}
-	if len(published) == 0 {
+	if requireAtLeastOnePublished && len(published) == 0 {
 		return nil, nil, domain.NewValidationError("jokes", "NO_JOKE_PUBLISHED")
 	}
 	return published, discarded, nil
