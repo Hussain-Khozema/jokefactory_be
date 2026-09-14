@@ -7,10 +7,15 @@ type SessionJoinRequest struct {
 	DisplayName string `json:"display_name" binding:"required"`
 }
 
-// BatchSubmitRequest is the payload for submitting a batch.
+// BatchSubmitRequest is the payload for submitting a batch. Exactly one of
+// Jokes and RawText carries the submission: a JM either sends a split array of
+// jokes or an unsplit raw blob for Marketing to split. Neither field is
+// binding:"required", because "exactly one of" cannot be expressed as a
+// binding tag; the rule is enforced in BatchService.Submit.
 type BatchSubmitRequest struct {
-	TeamID int64    `json:"team_id" binding:"required"`
-	Jokes  []string `json:"jokes" binding:"required"`
+	TeamID  int64    `json:"team_id" binding:"required"`
+	Jokes   []string `json:"jokes"`
+	RawText string   `json:"raw_text"`
 }
 
 // AssignRequest is used for instructor assign endpoint.

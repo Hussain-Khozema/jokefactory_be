@@ -71,7 +71,7 @@ func TestEndToEndRound(t *testing.T) {
 	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{
 		"short joke for medium length check xx words here now",
 		"discard me please",
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

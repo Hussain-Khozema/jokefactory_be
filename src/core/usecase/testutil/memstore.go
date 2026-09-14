@@ -326,13 +326,21 @@ func (st *Store) ResetGame(context.Context) error {
 	return nil
 }
 
-func (st *Store) CreateBatch(_ context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error) {
+func (st *Store) CreateBatch(_ context.Context, roundID, teamID int64, jokes []string, rawText string) (*domain.Batch, error) {
 	id := st.NextBatch
 	st.NextBatch++
 	now := time.Now().UTC()
 	b := &domain.Batch{
 		ID: id, RoundID: roundID, TeamID: teamID, Status: domain.BatchSubmitted,
 		SubmittedAt: &now, CreatedAt: now,
+	}
+	// Mirrors the Postgres repo: an empty blob stays nil (SQL NULL), so
+	// RawText != nil is the "not yet split" predicate here too.
+	if rawText != "" {
+		raw := rawText
+		original := rawText
+		b.RawText = &raw
+		b.RawTextOriginal = &original
 	}
 	for _, text := range jokes {
 		jid := st.NextJoke
@@ -1094,6 +1102,14 @@ func cloneBatch(b *domain.Batch) *domain.Batch {
 	if b.LockedBy != nil {
 		t := *b.LockedBy
 		cp.LockedBy = &t
+	}
+	if b.RawText != nil {
+		t := *b.RawText
+		cp.RawText = &t
+	}
+	if b.RawTextOriginal != nil {
+		t := *b.RawTextOriginal
+		cp.RawTextOriginal = &t
 	}
 	return &cp
 }

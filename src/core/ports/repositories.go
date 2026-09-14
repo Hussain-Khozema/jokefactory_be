@@ -125,7 +125,9 @@ type RoundRepository interface {
 }
 
 type BatchRepository interface {
-	CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error)
+	// CreateBatch stores a batch from exactly one of jokes (already split) or
+	// rawText (the JM's unsplit blob, stored in both raw_text columns).
+	CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string, rawText string) (*domain.Batch, error)
 	ListBatchesByTeam(ctx context.Context, roundID, teamID int64) ([]domain.Batch, error)
 	GetBatchWithJokes(ctx context.Context, batchID int64) (*BatchWithJokes, error)
 }

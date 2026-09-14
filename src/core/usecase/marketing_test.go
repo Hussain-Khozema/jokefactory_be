@@ -47,7 +47,7 @@ func TestMarketingPublishFlow(t *testing.T) {
 		mkt = findMarketingOnTeam(t, session, users, *jm.TeamID)
 	}
 
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"Setup one?", "Punchline one."})
+	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"Setup one?", "Punchline one."}, "")
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestPublishRequiresAtLeastOnePublished(t *testing.T) {
 
 	jm := findJM(t, session, users)
 	mkt := findMarketingOnTeam(t, session, users, *jm.TeamID)
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"j1", "j2"})
+	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"j1", "j2"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

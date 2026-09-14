@@ -76,7 +76,7 @@ func TestPreMarketingFlow(t *testing.T) {
 	}
 
 	jokes := []string{"Why did the chicken cross the road?", "Because it could."}
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, jokes)
+	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, jokes, "")
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}

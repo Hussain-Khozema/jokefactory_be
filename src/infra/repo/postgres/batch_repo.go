@@ -25,14 +25,21 @@ func scanBatch(row scannable) (*domain.Batch, error) {
 	return &b, nil
 }
 
-func (r *Repositories) CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string) (*domain.Batch, error) {
+func (r *Repositories) CreateBatch(ctx context.Context, roundID, teamID int64, jokes []string, rawText string) (*domain.Batch, error) {
+	// An empty blob must store SQL NULL, not '': raw_text IS NOT NULL is the
+	// "not yet split" predicate, so '' would make every jokes-path batch look unsplit.
+	var raw *string
+	if rawText != "" {
+		raw = &rawText
+	}
+
 	var batch *domain.Batch
 	err := r.pg.WithTx(ctx, func(tx pgx.Tx) error {
 		var err error
 		batch, err = scanBatch(tx.QueryRow(ctx, `
-			INSERT INTO batches (round_id, team_id, status, submitted_at)
-			VALUES ($1, $2, 'SUBMITTED', now())
-			RETURNING `+batchColumns, roundID, teamID))
+			INSERT INTO batches (round_id, team_id, status, submitted_at, raw_text, raw_text_original)
+			VALUES ($1, $2, 'SUBMITTED', now(), $3, $3)
+			RETURNING `+batchColumns, roundID, teamID, raw))
 		if err != nil {
 			return err
 		}

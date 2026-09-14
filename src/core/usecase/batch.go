@@ -4,10 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"jokefactory/src/core/domain"
 	"jokefactory/src/core/ports"
 )
+
+// minRawTextChars is the shortest raw blob a JM may submit. Mirrors the
+// frontend's MIN_RAW_CHARS.
+const minRawTextChars = 20
 
 // BatchService handles JM batch workflows.
 type BatchService struct {
@@ -19,11 +24,27 @@ func NewBatchService(repo ports.Store, log *slog.Logger) *BatchService {
 	return &BatchService{repo: repo, log: log}
 }
 
-// Submit allows a JM to submit a batch of jokes.
-func (s *BatchService) Submit(ctx context.Context, userID, roundID, teamID int64, jokes []string) (*domain.Batch, error) {
-	if len(jokes) == 0 {
-		return nil, domain.NewValidationError("jokes", "at least one joke required")
+// Submit allows a JM to submit a batch, as either an already-split array of
+// jokes or an unsplit raw blob for Marketing to split. Exactly one of the two
+// must be supplied.
+func (s *BatchService) Submit(ctx context.Context, userID, roundID, teamID int64, jokes []string, rawText string) (*domain.Batch, error) {
+	hasJokes := len(jokes) > 0
+	hasRaw := strings.TrimSpace(rawText) != ""
+
+	switch {
+	case hasJokes && hasRaw:
+		return nil, domain.NewValidationError("jokes", "supply either jokes or raw_text, not both")
+	case !hasJokes && !hasRaw:
+		return nil, domain.NewValidationError("jokes", "either jokes or raw_text required")
 	}
+
+	if hasRaw {
+		if len([]rune(strings.TrimSpace(rawText))) < minRawTextChars {
+			return nil, domain.NewValidationError("raw_text",
+				fmt.Sprintf("at least %d characters required", minRawTextChars))
+		}
+	}
+
 	for i, j := range jokes {
 		if j == "" {
 			return nil, domain.NewValidationError("jokes", fmt.Sprintf("joke %d is empty", i))
@@ -49,19 +70,24 @@ func (s *BatchService) Submit(ctx context.Context, userID, roundID, teamID int64
 		return nil, domain.NewConflictError("round not active")
 	}
 
-	// R1: exact batch_size. R2+: up to batch_size (cap).
-	if round.RoundNumber == 1 {
-		if len(jokes) != round.BatchSize {
-			return nil, domain.NewValidationError("jokes", fmt.Sprintf("expected %d jokes", round.BatchSize))
+	// Batch-size rules need a joke count, which a raw blob does not have yet. On the raw
+	// path they are enforced in MarketingService.Split (task 3), the first point where the
+	// count exists.
+	if hasJokes {
+		// R1: exact batch_size. R2+: up to batch_size (cap).
+		if round.RoundNumber == 1 {
+			if len(jokes) != round.BatchSize {
+				return nil, domain.NewValidationError("jokes", fmt.Sprintf("expected %d jokes", round.BatchSize))
+			}
+		} else if len(jokes) > round.BatchSize {
+			return nil, domain.NewValidationError("jokes", fmt.Sprintf("expected up to %d jokes", round.BatchSize))
 		}
-	} else if len(jokes) > round.BatchSize {
-		return nil, domain.NewValidationError("jokes", fmt.Sprintf("expected up to %d jokes", round.BatchSize))
 	}
 
 	if err := s.repo.EnsureTeamRoundState(ctx, roundID, teamID); err != nil {
 		return nil, err
 	}
-	return s.repo.CreateBatch(ctx, roundID, teamID, jokes)
+	return s.repo.CreateBatch(ctx, roundID, teamID, jokes, rawText)
 }
 
 // List returns batches submitted by a team (JM or Marketing on that team).

@@ -36,7 +36,7 @@ func (h *BatchHandler) Submit(c *gin.Context) {
 		return
 	}
 
-	batch, err := h.batchService.Submit(c.Request.Context(), userID, roundID, req.TeamID, req.Jokes)
+	batch, err := h.batchService.Submit(c.Request.Context(), userID, roundID, req.TeamID, req.Jokes, req.RawText)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return

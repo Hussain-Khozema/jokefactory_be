@@ -51,7 +51,7 @@ func TestFeedbackService(t *testing.T) {
 
 	publishAndFit := func(title string, dimFits map[domain.Dimension]float64, bought bool) int64 {
 		t.Helper()
-		batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"a short joke text"})
+		batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"a short joke text"}, "")
 		if err != nil {
 			t.Fatal(err)
 		}

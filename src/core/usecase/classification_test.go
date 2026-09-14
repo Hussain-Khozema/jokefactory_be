@@ -48,7 +48,7 @@ func TestPublishClassifiesAndMaterializesFit(t *testing.T) {
 	mkt := findMarketingOnTeam(t, session, users, *jm.TeamID)
 
 	jokeText := "I told my boss I needed a raise so he said do more work please today now"
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{jokeText})
+	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{jokeText}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestReconcilerReclassifiesOrphans(t *testing.T) {
 
 	jm := findJM(t, session, users)
 	mkt := findMarketingOnTeam(t, session, users, *jm.TeamID)
-	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"short joke text here"})
+	batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"short joke text here"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
