@@ -1,7 +1,12 @@
 # Handoff — deploy these changes to Azure
 
-**For: Hussain.** Frank's frontend is now wired to this backend and works end to end locally.
-This document is everything you need to get the same code running on Azure.
+**For: Hussain.** Frank's frontend is now **fully wired to this backend and verified end to
+end** against a local instance of it — every screen, every panel, real data throughout. This
+document is everything you need to get the same backend running on Azure so it can do the same
+there.
+
+Nothing in the frontend is waiting on further backend work to function. The integration is
+finished; this is the deployment step.
 
 **What you need to do, in short:**
 
@@ -181,6 +186,26 @@ splitting" returns exactly what the Joke Maker pasted, with its original formatt
 byte-identical locally.
 
 ---
+
+## 6b. What the frontend now does with all of this
+
+Verified in a browser against a local instance of this backend, on a clean database, with a
+full round played through:
+
+- The Joke Maker pastes an unsplit blob and submits it; Marketing claims it, **the splitter
+  renders the raw text**, splits into five jokes, titles two and discards three.
+- Both published jokes were classified and **sold to all 100 AI customers**.
+- Marketing's profit tile read **$199.77** — which is exactly 200 sales × $1, less 2 published
+  × $0.10, less 3 discarded × $0.01. The economics line up end to end.
+- Marketing's feedback panel renders **your `/feedback` endpoint's** good/improve dimension
+  names as chips. Worth knowing: the frontend previously *invented* this panel against a
+  hardcoded profile and drew graded proximity bars, which leaked more than the learning design
+  allows. Your implementation is the correct one and it is now what students see.
+- The instructor's Live Market shows real team names and sold counts from `/market`; the
+  leaderboard shows real counts from `/stats`.
+
+So when you deploy, all of that should work against Azure immediately — the only change on
+Frank's side is pointing `VITE_API_BASE_URL` at the deployed URL.
 
 ## 7. Smoke checks after deploying
 
