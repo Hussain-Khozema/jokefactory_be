@@ -62,6 +62,13 @@ type TeamSummary struct {
 	UnsoldJokes        int
 	SoldJokesCount     int
 	UnprocessedBatches int
+	// JokesCreated is every joke the team's marketer decided on
+	// (published + discarded). The frontend cannot derive it, because round 2
+	// batch sizes vary; Marketing's Content Waste tile is
+	// JokesCreated - JokesPublished.
+	JokesCreated int
+	// JokesPublished mirrors PublishedJokes under the name the spec uses.
+	JokesPublished int
 }
 
 type TeamStats struct {

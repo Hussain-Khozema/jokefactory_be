@@ -128,6 +128,15 @@ func TestEndToEndRound(t *testing.T) {
 	if summary.Points != 5 || summary.PublishedJokes != 1 || summary.DiscardedJokes != 1 {
 		t.Fatalf("summary counters = %+v", summary)
 	}
+	// Marketing's Content Waste tile is jokes_created - jokes_published, and the
+	// frontend cannot derive jokes_created because R2 batch sizes vary.
+	if summary.JokesCreated != summary.PublishedJokes+summary.DiscardedJokes {
+		t.Fatalf("jokes_created = %d, want published+discarded = %d",
+			summary.JokesCreated, summary.PublishedJokes+summary.DiscardedJokes)
+	}
+	if summary.JokesPublished != summary.PublishedJokes {
+		t.Fatalf("jokes_published = %d, want %d", summary.JokesPublished, summary.PublishedJokes)
+	}
 	if diff := summary.Profit - wantProfit; diff > 1e-9 || diff < -1e-9 {
 		t.Fatalf("profit = %v, want %v", summary.Profit, wantProfit)
 	}

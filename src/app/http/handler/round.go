@@ -70,5 +70,9 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 		"published_jokes":     summary.PublishedJokes,
 		"discarded_jokes":     summary.DiscardedJokes,
 		"unprocessed_batches": summary.UnprocessedBatches,
+		// Added alongside the existing keys, never instead of them: the screens
+		// that work today still read published_jokes / discarded_jokes.
+		"jokes_created":   summary.JokesCreated,
+		"jokes_published": summary.JokesPublished,
 	})
 }

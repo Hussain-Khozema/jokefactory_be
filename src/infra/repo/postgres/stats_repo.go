@@ -102,7 +102,11 @@ func (r *Repositories) GetTeamSummary(ctx context.Context, roundID, teamID int64
 		       COALESCE(s.discarded_jokes, 0),
 		       GREATEST(COALESCE(s.published_jokes, 0) - COALESCE(s.points_earned, 0), 0),
 		       LEAST(COALESCE(s.published_jokes, 0), COALESCE(s.points_earned, 0)),
-		       COALESCE(u.cnt, 0)
+		       COALESCE(u.cnt, 0),
+		       -- jokes_created: every joke Marketing decided on. The leaderboard
+		       -- already computes the same sum, as total_jokes.
+		       COALESCE(s.published_jokes, 0) + COALESCE(s.discarded_jokes, 0),
+		       COALESCE(s.published_jokes, 0)
 		FROM teams t
 		LEFT JOIN stats s ON true
 		LEFT JOIN ranks r ON r.team_id = t.id
@@ -115,6 +119,7 @@ func (r *Repositories) GetTeamSummary(ctx context.Context, roundID, teamID int64
 		&summary.Rank, &summary.Points, &summary.Profit, &summary.TotalSales,
 		&summary.BatchesCreated, &summary.BatchesProcessed, &summary.PublishedJokes, &summary.DiscardedJokes,
 		&summary.UnsoldJokes, &summary.SoldJokesCount, &summary.UnprocessedBatches,
+		&summary.JokesCreated, &summary.JokesPublished,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

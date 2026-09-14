@@ -1055,6 +1055,8 @@ func (st *Store) GetTeamSummary(ctx context.Context, roundID, teamID int64) (*po
 		BatchesCreated: teamState.BatchesCreated, BatchesProcessed: teamState.BatchesProcessed,
 		PublishedJokes: teamState.PublishedJokes, DiscardedJokes: teamState.DiscardedJokes,
 		UnsoldJokes: unsold, SoldJokesCount: sold, UnprocessedBatches: unprocessed,
+		JokesCreated:   teamState.PublishedJokes + teamState.DiscardedJokes,
+		JokesPublished: teamState.PublishedJokes,
 	}, nil
 }
 
