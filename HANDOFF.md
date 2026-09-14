@@ -113,6 +113,33 @@ Deploy in this order:
 
 ## 4. Deploy
 
+**The Container App already exists and is healthy:**
+
+```
+https://jokefactory-api.whitepebble-2daa4226.westus2.azurecontainerapps.io
+```
+
+`/health/detailed` returns `{"status":"ok","components":{"database":{"status":"healthy"}}}`.
+It is currently running **pre-change code** — verified 2026-09-14:
+
+| Probe | Result | Means |
+|---|---|---|
+| `POST /v1/rounds/1/batches` with `raw_text` | 400 `invalid payload` | no raw_text support |
+| `POST /v1/marketing/batches/1/split` | 404 | route not deployed |
+| `GET /v1/rounds/1/teams/1/summary` | no `jokes_created` | old summary |
+
+So this is a redeploy of an existing, working app — not a first deploy. Frank's Netlify build
+is deliberately still pointed at the in-browser mock until these land, because pointing it at
+the current deployment would break the Joke Maker's submit and Marketing's split.
+
+**Please also set the LLM credentials while you are in there.** `APP_LLM_BASE_URL` and
+`APP_LLM_API_KEY` appear to be unset, which silently selects the **stub classifier**
+(`config.go:51 LLMConfig.Enabled()`). The stub emits the first category of every dimension, so
+every joke classifies identically and scores the same. The game will look like it works while
+the entire reverse-engineering exercise is meaningless — which is the dangerous failure mode,
+because nothing errors.
+
+
 The README says pushing to `main` triggers `.github/workflows/deploy.yml`. **That file does not
 exist in this repo** — only `verify.yml` does. So deployment is manual:
 
