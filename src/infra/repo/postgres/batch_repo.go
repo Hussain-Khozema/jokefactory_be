@@ -10,13 +10,14 @@ import (
 	"jokefactory/src/core/ports"
 )
 
-const batchColumns = `batch_id, round_id, team_id, status, submitted_at, processed_at, locked_at, locked_by, created_at`
+const batchColumns = `batch_id, round_id, team_id, status, submitted_at, processed_at, locked_at, locked_by, created_at, raw_text, raw_text_original`
 
 func scanBatch(row scannable) (*domain.Batch, error) {
 	var b domain.Batch
 	err := row.Scan(
 		&b.ID, &b.RoundID, &b.TeamID, &b.Status, &b.SubmittedAt,
 		&b.ProcessedAt, &b.LockedAt, &b.LockedBy, &b.CreatedAt,
+		&b.RawText, &b.RawTextOriginal,
 	)
 	if err != nil {
 		return nil, err

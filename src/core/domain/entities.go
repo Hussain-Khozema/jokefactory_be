@@ -63,6 +63,10 @@ type Batch struct {
 	LockedBy    *int64
 	CreatedAt   time.Time
 	Jokes       []Joke
+	// RawText is the JM's unsplit blob; nil once Marketing has split the batch.
+	RawText *string
+	// RawTextOriginal is the immutable copy set at submit, so unsplit is lossless.
+	RawTextOriginal *string
 }
 
 type Joke struct {
