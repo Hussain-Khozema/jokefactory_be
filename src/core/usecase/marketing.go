@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -66,6 +67,97 @@ func (s *MarketingService) QueueCount(ctx context.Context, userID, roundID int64
 		return 0, err
 	}
 	return s.repo.CountSubmittedBatchesForTeam(ctx, roundID, *user.TeamID)
+}
+
+// Split cuts a Joke Maker's unsplit raw blob into individual jokes. This is the
+// first point at which a joke count exists on the raw path, so the R1/R2
+// batch-size rules are enforced here rather than in BatchService.Submit.
+func (s *MarketingService) Split(
+	ctx context.Context,
+	userID, batchID int64,
+	jokes []string,
+) (*MarketingQueueItem, error) {
+	user, round, err := s.requireEditableBatch(ctx, userID, batchID)
+	if err != nil {
+		return nil, err
+	}
+
+	cleaned := make([]string, 0, len(jokes))
+	for _, j := range jokes {
+		if t := strings.TrimSpace(j); t != "" {
+			cleaned = append(cleaned, t)
+		}
+	}
+	if len(cleaned) == 0 {
+		return nil, domain.NewValidationError("jokes", "at least one joke required")
+	}
+
+	// These two rules moved here from BatchService.Submit: a raw blob carries no
+	// joke count, so the split is the first place they can be applied. The
+	// message strings match the ones Submit used, so the frontend sees no change.
+	if round.RoundNumber == 1 && len(cleaned) != round.BatchSize {
+		return nil, domain.NewValidationError("jokes", fmt.Sprintf("expected %d jokes", round.BatchSize))
+	} else if round.RoundNumber >= 2 && len(cleaned) > round.BatchSize {
+		return nil, domain.NewValidationError("jokes", fmt.Sprintf("expected up to %d jokes", round.BatchSize))
+	}
+
+	split, err := s.repo.SplitBatch(ctx, batchID, user.ID, *user.TeamID, cleaned)
+	if err != nil {
+		return nil, err
+	}
+	return s.queueItem(ctx, split, round.ID, *user.TeamID)
+}
+
+// requireEditableBatch resolves the marketer and round for a batch the marketer
+// is allowed to edit: same team, ACTIVE round, SUBMITTED batch, and the lock
+// held by this marketer. An expired lock must not let a second marketer
+// overwrite the first marketer's work, so the holder is checked explicitly.
+func (s *MarketingService) requireEditableBatch(
+	ctx context.Context,
+	userID, batchID int64,
+) (*domain.User, *domain.Round, error) {
+	user, err := s.requireMarketer(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	existing, err := s.repo.GetBatchWithJokes(ctx, batchID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if existing.Batch.TeamID != *user.TeamID {
+		return nil, nil, domain.NewForbiddenError("NOT_ASSIGNED_TO_THIS_MARKETER")
+	}
+	round, err := s.repo.GetRoundByID(ctx, existing.Batch.RoundID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if round.Status != domain.RoundActive {
+		return nil, nil, domain.NewConflictError("ROUND_NOT_ACTIVE")
+	}
+	if existing.Batch.Status == domain.BatchProcessed {
+		return nil, nil, domain.NewConflictError("BATCH_ALREADY_PROCESSED")
+	}
+	if existing.Batch.Status != domain.BatchSubmitted {
+		return nil, nil, domain.NewConflictError("batch not submitted")
+	}
+	if existing.Batch.LockedBy == nil || *existing.Batch.LockedBy != user.ID {
+		return nil, nil, domain.NewForbiddenError("NOT_ASSIGNED_TO_THIS_MARKETER")
+	}
+	return user, round, nil
+}
+
+// queueItem wraps a batch in the same {batch, jokes, queue_size} envelope
+// QueueNext returns, so the frontend can drop either response into queue state.
+func (s *MarketingService) queueItem(
+	ctx context.Context,
+	bwj *ports.BatchWithJokes,
+	roundID, teamID int64,
+) (*MarketingQueueItem, error) {
+	count, err := s.repo.CountSubmittedBatchesForTeam(ctx, roundID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	return &MarketingQueueItem{Batch: bwj.Batch, Jokes: bwj.Jokes, QueueSize: count}, nil
 }
 
 // Publish titles jokes and publishes/discards them for a claimed batch.

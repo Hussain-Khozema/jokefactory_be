@@ -418,6 +418,60 @@ func (st *Store) ClaimNextBatch(_ context.Context, roundID, teamID, marketerID i
 	return &ports.BatchWithJokes{Batch: *cp, Jokes: cp.Jokes}, nil
 }
 
+func (st *Store) SplitBatch(
+	_ context.Context,
+	batchID, marketerID, teamID int64,
+	jokes []string,
+) (*ports.BatchWithJokes, error) {
+	b, err := st.editableBatch(batchID, marketerID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	b.Jokes = nil
+	for _, text := range jokes {
+		jid := st.NextJoke
+		st.NextJoke++
+		b.Jokes = append(b.Jokes, domain.Joke{
+			ID: jid, BatchID: batchID, Text: text, PublishStatus: domain.PublishPending, CreatedAt: now,
+		})
+	}
+	// raw_text is live state and is nulled on split; raw_text_original is the
+	// immutable copy, so an unsplit stays lossless.
+	b.RawText = nil
+	b.LockedAt = &now
+
+	cp := cloneBatch(b)
+	return &ports.BatchWithJokes{Batch: *cp, Jokes: cp.Jokes}, nil
+}
+
+// editableBatch mirrors the guards the Postgres repo applies inside its split
+// transaction: same team, still SUBMITTED, lock held, and no decided jokes.
+func (st *Store) editableBatch(batchID, marketerID, teamID int64) (*domain.Batch, error) {
+	b, ok := st.Batches[batchID]
+	if !ok {
+		return nil, domain.NewNotFoundError("batch")
+	}
+	if b.TeamID != teamID {
+		return nil, domain.NewForbiddenError("NOT_ASSIGNED_TO_THIS_MARKETER")
+	}
+	if b.Status == domain.BatchProcessed {
+		return nil, domain.NewConflictError("BATCH_ALREADY_PROCESSED")
+	}
+	if b.Status != domain.BatchSubmitted {
+		return nil, domain.NewConflictError("batch not submitted")
+	}
+	if b.LockedBy == nil || *b.LockedBy != marketerID {
+		return nil, domain.NewForbiddenError("NOT_ASSIGNED_TO_THIS_MARKETER")
+	}
+	for _, j := range b.Jokes {
+		if j.PublishStatus != domain.PublishPending {
+			return nil, domain.NewConflictError("BATCH_JOKES_ALREADY_DECIDED")
+		}
+	}
+	return b, nil
+}
+
 func (st *Store) PublishBatch(
 	_ context.Context,
 	batchID, marketerID, teamID int64,

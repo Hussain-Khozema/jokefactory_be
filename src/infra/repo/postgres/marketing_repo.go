@@ -75,6 +75,69 @@ func (r *Repositories) CountSubmittedBatchesForTeam(ctx context.Context, roundID
 	return count, err
 }
 
+// SplitBatch replaces a batch's jokes with the supplied texts. BIGSERIAL
+// assigns the new joke ids in insertion order, which is the order the frontend
+// keys its selection model on.
+func (r *Repositories) SplitBatch(
+	ctx context.Context,
+	batchID, marketerID, teamID int64,
+	jokes []string,
+) (*ports.BatchWithJokes, error) {
+	var out *ports.BatchWithJokes
+	err := r.pg.WithTx(ctx, func(tx pgx.Tx) error {
+		if _, err := lockBatchForEdit(ctx, tx, batchID, marketerID, teamID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM jokes WHERE batch_id = $1`, batchID); err != nil {
+			return err
+		}
+		for _, text := range jokes {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO jokes (batch_id, joke_text, publish_status)
+				VALUES ($1, $2, 'PENDING')`, batchID, text); err != nil {
+				return err
+			}
+		}
+		// raw_text is nulled (raw_text_original survives for unsplit), and the
+		// lock is refreshed: reading and cutting a long blob can easily outlast
+		// the 15-minute lock window.
+		batch, err := scanBatch(tx.QueryRow(ctx, `
+			UPDATE batches SET raw_text = NULL, locked_at = now()
+			WHERE batch_id = $1
+			RETURNING `+batchColumns, batchID))
+		if err != nil {
+			return err
+		}
+		created, err := listJokesTx(ctx, tx, batchID)
+		if err != nil {
+			return err
+		}
+		batch.Jokes = created
+		out = &ports.BatchWithJokes{Batch: *batch, Jokes: created}
+		return nil
+	})
+	return out, err
+}
+
+// lockBatchForEdit guards the edit endpoints (split/unsplit): same team, still
+// SUBMITTED, lock held by this marketer, and no joke already decided.
+func lockBatchForEdit(ctx context.Context, tx pgx.Tx, batchID, marketerID, teamID int64) (*domain.Batch, error) {
+	b, err := lockBatchForPublish(ctx, tx, batchID, marketerID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	var decided int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*) FROM jokes
+		WHERE batch_id = $1 AND publish_status <> 'PENDING'`, batchID).Scan(&decided); err != nil {
+		return nil, err
+	}
+	if decided > 0 {
+		return nil, domain.NewConflictError("BATCH_JOKES_ALREADY_DECIDED")
+	}
+	return b, nil
+}
+
 func (r *Repositories) PublishBatch(
 	ctx context.Context,
 	batchID, marketerID, teamID int64,

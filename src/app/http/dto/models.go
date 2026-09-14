@@ -37,6 +37,13 @@ type PublishJokeDecision struct {
 	IsPublished bool   `json:"is_published"`
 }
 
+// BatchSplitRequest is the payload for POST /marketing/batches/{id}/split.
+// Marketing cuts the Joke Maker's unsplit raw blob into individual jokes; this
+// is where joke ids are first assigned.
+type BatchSplitRequest struct {
+	Jokes []string `json:"jokes" binding:"required"`
+}
+
 // PublishRequest is the payload for POST /marketing/batches/{id}/publish.
 type PublishRequest struct {
 	Jokes []PublishJokeDecision `json:"jokes" binding:"required"`

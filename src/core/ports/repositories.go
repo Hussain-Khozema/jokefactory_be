@@ -152,6 +152,10 @@ type MarketingRepository interface {
 	ClaimNextBatch(ctx context.Context, roundID, teamID, marketerID int64) (*BatchWithJokes, error)
 	CountSubmittedBatchesForTeam(ctx context.Context, roundID, teamID int64) (int, error)
 	PublishBatch(ctx context.Context, batchID, marketerID, teamID int64, decisions []JokePublishDecision) (*PublishResult, error)
+	// SplitBatch replaces a batch's jokes with the supplied texts, clears
+	// raw_text (raw_text_original is left intact) and refreshes the lock.
+	// Conflicts when any existing joke has already been decided.
+	SplitBatch(ctx context.Context, batchID, marketerID, teamID int64, jokes []string) (*BatchWithJokes, error)
 }
 
 // FeedbackJokeRow is one published joke plus its materialized dim_fits for feedback.

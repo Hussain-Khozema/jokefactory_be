@@ -37,15 +37,49 @@ func (h *MarketingHandler) QueueNext(c *gin.Context) {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	if item.Batch.ID == 0 {
-		response.OK(c, gin.H{
-			"batch":      nil,
-			"jokes":      []gin.H{},
-			"queue_size": item.QueueSize,
-		})
+	response.OK(c, queueEnvelope(item))
+}
+
+// Split cuts an unsplit raw blob into individual jokes and assigns their ids.
+func (h *MarketingHandler) Split(c *gin.Context) {
+	userID, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+	batchID, err := strconv.ParseInt(c.Param("batch_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid batch id", middleware.GetRequestID(c))
+		return
+	}
+	var req dto.BatchSplitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid payload", middleware.GetRequestID(c))
 		return
 	}
 
+	item, err := h.marketingService.Split(c.Request.Context(), userID, batchID, req.Jokes)
+	if err != nil {
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+	response.OK(c, queueEnvelope(item))
+}
+
+// queueEnvelope renders the {batch, jokes, queue_size} shape shared by
+// queue/next and the split/unsplit endpoints, so the frontend can drop any of
+// them straight into its queue state.
+//
+// The two batch states are mutually exclusive and both explicit: an unsplit
+// batch has a non-null raw_text and an empty jokes array; a split batch has a
+// null raw_text and populated jokes. Never both.
+func queueEnvelope(item *usecase.MarketingQueueItem) gin.H {
+	if item.Batch.ID == 0 {
+		return gin.H{
+			"batch":      nil,
+			"jokes":      []gin.H{},
+			"queue_size": item.QueueSize,
+		}
+	}
 	jokes := make([]gin.H, 0, len(item.Jokes))
 	for _, j := range item.Jokes {
 		jokes = append(jokes, gin.H{
@@ -53,7 +87,7 @@ func (h *MarketingHandler) QueueNext(c *gin.Context) {
 			"joke_text": j.Text,
 		})
 	}
-	response.OK(c, gin.H{
+	return gin.H{
 		"batch": gin.H{
 			"batch_id":     item.Batch.ID,
 			"round_id":     item.Batch.RoundID,
@@ -62,10 +96,11 @@ func (h *MarketingHandler) QueueNext(c *gin.Context) {
 			"submitted_at": item.Batch.SubmittedAt,
 			"locked_at":    item.Batch.LockedAt,
 			"locked_by":    item.Batch.LockedBy,
+			"raw_text":     item.Batch.RawText,
 		},
 		"jokes":      jokes,
 		"queue_size": item.QueueSize,
-	})
+	}
 }
 
 func (h *MarketingHandler) Publish(c *gin.Context) {
