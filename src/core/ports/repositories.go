@@ -156,6 +156,11 @@ type MarketingRepository interface {
 	// raw_text (raw_text_original is left intact) and refreshes the lock.
 	// Conflicts when any existing joke has already been decided.
 	SplitBatch(ctx context.Context, batchID, marketerID, teamID int64, jokes []string) (*BatchWithJokes, error)
+	// UnsplitBatch drops a batch's jokes and puts it back in the unsplit state,
+	// restoring raw_text from the immutable raw_text_original (falling back to
+	// re-joining the joke texts for legacy jokes-array submissions, which have
+	// no original blob). Refreshes the lock.
+	UnsplitBatch(ctx context.Context, batchID, marketerID, teamID int64) (*BatchWithJokes, error)
 }
 
 // FeedbackJokeRow is one published joke plus its materialized dim_fits for feedback.

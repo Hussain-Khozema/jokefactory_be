@@ -108,6 +108,22 @@ func (s *MarketingService) Split(
 	return s.queueItem(ctx, split, round.ID, *user.TeamID)
 }
 
+// Unsplit puts a split batch back into the unsplit state so Marketing can cut
+// the blob differently. raw_text is restored from the immutable
+// raw_text_original, so the round trip is lossless rather than a re-join of the
+// split texts.
+func (s *MarketingService) Unsplit(ctx context.Context, userID, batchID int64) (*MarketingQueueItem, error) {
+	user, round, err := s.requireEditableBatch(ctx, userID, batchID)
+	if err != nil {
+		return nil, err
+	}
+	unsplit, err := s.repo.UnsplitBatch(ctx, batchID, user.ID, *user.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	return s.queueItem(ctx, unsplit, round.ID, *user.TeamID)
+}
+
 // requireEditableBatch resolves the marketer and round for a batch the marketer
 // is allowed to edit: same team, ACTIVE round, SUBMITTED batch, and the lock
 // held by this marketer. An expired lock must not let a second marketer

@@ -65,6 +65,26 @@ func (h *MarketingHandler) Split(c *gin.Context) {
 	response.OK(c, queueEnvelope(item))
 }
 
+// Unsplit drops the joke rows and restores the Joke Maker's original blob.
+func (h *MarketingHandler) Unsplit(c *gin.Context) {
+	userID, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+	batchID, err := strconv.ParseInt(c.Param("batch_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid batch id", middleware.GetRequestID(c))
+		return
+	}
+
+	item, err := h.marketingService.Unsplit(c.Request.Context(), userID, batchID)
+	if err != nil {
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+	response.OK(c, queueEnvelope(item))
+}
+
 // queueEnvelope renders the {batch, jokes, queue_size} shape shared by
 // queue/next and the split/unsplit endpoints, so the frontend can drop any of
 // them straight into its queue state.

@@ -119,6 +119,42 @@ func (r *Repositories) SplitBatch(
 	return out, err
 }
 
+// UnsplitBatch returns a batch to the unsplit state. The COALESCE fallback
+// covers a legacy jokes-array submission, which has no original blob: it
+// re-joins the joke texts rather than failing. The UPDATE must run before the
+// DELETE, since the fallback reads the rows it is about to remove.
+func (r *Repositories) UnsplitBatch(
+	ctx context.Context,
+	batchID, marketerID, teamID int64,
+) (*ports.BatchWithJokes, error) {
+	var out *ports.BatchWithJokes
+	err := r.pg.WithTx(ctx, func(tx pgx.Tx) error {
+		if _, err := lockBatchForEdit(ctx, tx, batchID, marketerID, teamID); err != nil {
+			return err
+		}
+		batch, err := scanBatch(tx.QueryRow(ctx, `
+			UPDATE batches
+			SET raw_text = COALESCE(
+			      raw_text_original,
+			      (SELECT string_agg(joke_text, E'\n\n' ORDER BY joke_id)
+			       FROM jokes WHERE batch_id = $1)
+			    ),
+			    locked_at = now()
+			WHERE batch_id = $1
+			RETURNING `+batchColumns, batchID))
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM jokes WHERE batch_id = $1`, batchID); err != nil {
+			return err
+		}
+		batch.Jokes = nil
+		out = &ports.BatchWithJokes{Batch: *batch}
+		return nil
+	})
+	return out, err
+}
+
 // lockBatchForEdit guards the edit endpoints (split/unsplit): same team, still
 // SUBMITTED, lock held by this marketer, and no joke already decided.
 func lockBatchForEdit(ctx context.Context, tx pgx.Tx, batchID, marketerID, teamID int64) (*domain.Batch, error) {

@@ -139,6 +139,7 @@ func (s *Server) setupRoutes() {
 		// Marketing
 		v1.GET("/marketing/queue/next", s.marketingHandler.QueueNext)
 		v1.POST("/marketing/batches/:batch_id/split", s.marketingHandler.Split)
+		v1.POST("/marketing/batches/:batch_id/unsplit", s.marketingHandler.Unsplit)
 		v1.POST("/marketing/batches/:batch_id/publish", s.marketingHandler.Publish)
 		v1.GET("/marketing/queue/count", s.marketingHandler.QueueCount)
 

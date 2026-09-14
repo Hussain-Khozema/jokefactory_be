@@ -4,6 +4,7 @@ package testutil
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"jokefactory/src/core/domain"
@@ -439,6 +440,35 @@ func (st *Store) SplitBatch(
 	// raw_text is live state and is nulled on split; raw_text_original is the
 	// immutable copy, so an unsplit stays lossless.
 	b.RawText = nil
+	b.LockedAt = &now
+
+	cp := cloneBatch(b)
+	return &ports.BatchWithJokes{Batch: *cp, Jokes: cp.Jokes}, nil
+}
+
+func (st *Store) UnsplitBatch(
+	_ context.Context,
+	batchID, marketerID, teamID int64,
+) (*ports.BatchWithJokes, error) {
+	b, err := st.editableBatch(batchID, marketerID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	// Mirrors the repo's COALESCE: prefer the immutable original blob, and only
+	// re-join the joke texts for a legacy jokes-array submission that has none.
+	if b.RawTextOriginal != nil {
+		restored := *b.RawTextOriginal
+		b.RawText = &restored
+	} else {
+		texts := make([]string, 0, len(b.Jokes))
+		for _, j := range b.Jokes {
+			texts = append(texts, j.Text)
+		}
+		joined := strings.Join(texts, "\n\n")
+		b.RawText = &joined
+	}
+	now := time.Now().UTC()
+	b.Jokes = nil
 	b.LockedAt = &now
 
 	cp := cloneBatch(b)
