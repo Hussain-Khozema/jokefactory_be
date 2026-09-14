@@ -87,6 +87,7 @@ func (h *BatchHandler) List(c *gin.Context) {
 				"publish_status": j.PublishStatus,
 				"published_at":   j.PublishedAt,
 				"sold_count":     j.SoldCount,
+				"first_sold_at":  j.FirstSoldAt,
 			})
 		}
 		out = append(out, gin.H{

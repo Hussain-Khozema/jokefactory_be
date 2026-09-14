@@ -90,11 +90,25 @@ func (r *Repositories) ListBatchesByTeam(ctx context.Context, roundID, teamID in
 		return batches, nil
 	}
 
+	// Sales come from two tables on purpose. purchases holds only what customers
+	// currently own, and is what ListMarket counts - so counting it here is what
+	// makes the batches listing and the market board agree. purchase_events is
+	// the append-only log: a returned joke loses its purchases row but keeps its
+	// +1 event, so only the log remembers that the joke ever sold.
 	jokeRows, err := r.pg.Pool.Query(ctx, `
-		SELECT joke_id, batch_id, joke_text, joke_title, publish_status, published_at, created_at
-		FROM jokes
-		WHERE batch_id = ANY($1)
-		ORDER BY batch_id, joke_id`, batchIDs)
+		SELECT j.joke_id, j.batch_id, j.joke_text, j.joke_title, j.publish_status,
+		       j.published_at, j.created_at, COALESCE(sc.sold_count, 0), fs.first_sold_at
+		FROM jokes j
+		LEFT JOIN (
+		    SELECT joke_id, COUNT(*)::int AS sold_count
+		    FROM purchases WHERE round_id = $2 GROUP BY joke_id
+		) sc ON sc.joke_id = j.joke_id
+		LEFT JOIN (
+		    SELECT joke_id, MIN(created_at) AS first_sold_at
+		    FROM purchase_events WHERE round_id = $2 AND delta = 1 GROUP BY joke_id
+		) fs ON fs.joke_id = j.joke_id
+		WHERE j.batch_id = ANY($1)
+		ORDER BY j.batch_id, j.joke_id`, batchIDs, roundID)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +117,8 @@ func (r *Repositories) ListBatchesByTeam(ctx context.Context, roundID, teamID in
 	jokeMap := make(map[int64][]domain.Joke)
 	for jokeRows.Next() {
 		var j domain.Joke
-		if err := jokeRows.Scan(&j.ID, &j.BatchID, &j.Text, &j.Title, &j.PublishStatus, &j.PublishedAt, &j.CreatedAt); err != nil {
+		if err := jokeRows.Scan(&j.ID, &j.BatchID, &j.Text, &j.Title, &j.PublishStatus,
+			&j.PublishedAt, &j.CreatedAt, &j.SoldCount, &j.FirstSoldAt); err != nil {
 			return nil, err
 		}
 		jokeMap[j.BatchID] = append(jokeMap[j.BatchID], j)

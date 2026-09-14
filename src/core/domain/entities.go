@@ -77,7 +77,13 @@ type Joke struct {
 	PublishStatus PublishStatus
 	PublishedAt   *time.Time
 	CreatedAt     time.Time
-	SoldCount     int
+	// SoldCount is how many AI customers currently hold this joke, counted from
+	// purchases - the same source the market board counts, so the two agree.
+	SoldCount int
+	// FirstSoldAt is the earliest purchase event for this joke. It outlives the
+	// holdings: a joke every buyer returned has SoldCount 0 but keeps its
+	// timestamp, which is what the sales lead-time reads.
+	FirstSoldAt *time.Time
 }
 
 // AICustomer is a simulated buyer for a round.

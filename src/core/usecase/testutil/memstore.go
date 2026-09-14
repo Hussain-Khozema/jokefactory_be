@@ -11,26 +11,42 @@ import (
 	"jokefactory/src/core/ports"
 )
 
+// PurchaseEvent is one row of the append-only purchase_events log: delta is +1
+// for a buy and -1 for a return.
+type PurchaseEvent struct {
+	RoundID      int64
+	AICustomerID int64
+	JokeID       int64
+	TeamID       int64
+	Delta        int
+	Price        float64
+	CreatedAt    time.Time
+}
+
 type Store struct {
-	Users        map[int64]*domain.User
-	ByName       map[string]int64
-	Teams        []domain.Team
-	Rounds       map[int64]*domain.Round
-	Ideals       map[int64]domain.IdealProfile
-	TeamState    map[[2]int64]*domain.TeamRoundState
-	Batches      map[int64]*domain.Batch
-	ClassJobs    map[int64]*domain.ClassificationJob
-	DimValues    map[int64]map[domain.Dimension]string
-	DimFits      map[int64]map[domain.Dimension]float64
-	JokeFits     map[int64]*domain.JokeFit
-	AICustomers  map[int64]*domain.AICustomer // keyed by ai_customer_id
-	Purchases    map[int64]*domain.Purchase   // keyed by purchase_id
-	NextUser     int64
-	NextTeam     int64
-	NextBatch    int64
-	NextJoke     int64
-	NextAICust   int64
-	NextPurchase int64
+	Users       map[int64]*domain.User
+	ByName      map[string]int64
+	Teams       []domain.Team
+	Rounds      map[int64]*domain.Round
+	Ideals      map[int64]domain.IdealProfile
+	TeamState   map[[2]int64]*domain.TeamRoundState
+	Batches     map[int64]*domain.Batch
+	ClassJobs   map[int64]*domain.ClassificationJob
+	DimValues   map[int64]map[domain.Dimension]string
+	DimFits     map[int64]map[domain.Dimension]float64
+	JokeFits    map[int64]*domain.JokeFit
+	AICustomers map[int64]*domain.AICustomer // keyed by ai_customer_id
+	Purchases   map[int64]*domain.Purchase   // keyed by purchase_id
+	// PurchaseEvents mirrors the append-only purchase_events table: a return
+	// deletes the Purchases row but leaves its +1 event behind, so this is the
+	// only record that a joke ever sold.
+	PurchaseEvents []PurchaseEvent
+	NextUser       int64
+	NextTeam       int64
+	NextBatch      int64
+	NextJoke       int64
+	NextAICust     int64
+	NextPurchase   int64
 }
 
 func NewStore() *Store {
@@ -358,11 +374,38 @@ func (st *Store) CreateBatch(_ context.Context, roundID, teamID int64, jokes []s
 }
 
 func (st *Store) ListBatchesByTeam(_ context.Context, roundID, teamID int64) ([]domain.Batch, error) {
+	// sold_count is current holdings and first_sold_at is the earliest buy in the
+	// append-only log; mirrors the two LEFT JOINs in the Postgres repo.
+	sold := make(map[int64]int)
+	for _, p := range st.Purchases {
+		if p.RoundID == roundID {
+			sold[p.JokeID]++
+		}
+	}
+	firstSold := make(map[int64]time.Time)
+	for _, e := range st.PurchaseEvents {
+		if e.RoundID != roundID || e.Delta != 1 {
+			continue
+		}
+		if at, ok := firstSold[e.JokeID]; !ok || e.CreatedAt.Before(at) {
+			firstSold[e.JokeID] = e.CreatedAt
+		}
+	}
+
 	var out []domain.Batch
 	for _, b := range st.Batches {
-		if b.RoundID == roundID && b.TeamID == teamID {
-			out = append(out, *cloneBatch(b))
+		if b.RoundID != roundID || b.TeamID != teamID {
+			continue
 		}
+		cp := cloneBatch(b)
+		for i := range cp.Jokes {
+			cp.Jokes[i].SoldCount = sold[cp.Jokes[i].ID]
+			if at, ok := firstSold[cp.Jokes[i].ID]; ok {
+				t := at
+				cp.Jokes[i].FirstSoldAt = &t
+			}
+		}
+		out = append(out, *cp)
 	}
 	return out, nil
 }
@@ -853,10 +896,23 @@ func (st *Store) BuyJoke(_ context.Context, roundID, aiCustomerID, jokeID, teamI
 		ID: id, RoundID: roundID, AICustomerID: aiCustomerID,
 		JokeID: jokeID, TeamID: teamID, Price: price, CreatedAt: now,
 	}
+	st.recordPurchaseEvent(roundID, aiCustomerID, jokeID, teamID, 1, price, now)
 	state := st.ensureTeamState(roundID, teamID)
 	state.PointsEarned++
 	state.UpdatedAt = now
 	return nil
+}
+
+func (st *Store) recordPurchaseEvent(
+	roundID, aiCustomerID, jokeID, teamID int64,
+	delta int,
+	price float64,
+	at time.Time,
+) {
+	st.PurchaseEvents = append(st.PurchaseEvents, PurchaseEvent{
+		RoundID: roundID, AICustomerID: aiCustomerID, JokeID: jokeID,
+		TeamID: teamID, Delta: delta, Price: price, CreatedAt: at,
+	})
 }
 
 func (st *Store) SwapJoke(
@@ -868,8 +924,10 @@ func (st *Store) SwapJoke(
 		return domain.NewNotFoundError("ai_customer")
 	}
 	var returned bool
+	var returnedPrice float64
 	for id, p := range st.Purchases {
 		if p.RoundID == roundID && p.AICustomerID == aiCustomerID && p.JokeID == returnJokeID {
+			returnedPrice = p.Price
 			delete(st.Purchases, id)
 			returned = true
 			break
@@ -878,6 +936,9 @@ func (st *Store) SwapJoke(
 	if !returned {
 		return domain.NewConflictError("held joke not found for swap")
 	}
+	// The holding is gone but the log keeps the -1, so the returned joke still
+	// remembers that it once sold.
+	st.recordPurchaseEvent(roundID, aiCustomerID, returnJokeID, returnTeamID, -1, returnedPrice, time.Now().UTC())
 	stRet := st.ensureTeamState(roundID, returnTeamID)
 	if stRet.PointsEarned > 0 {
 		stRet.PointsEarned--
@@ -894,6 +955,7 @@ func (st *Store) SwapJoke(
 		ID: id, RoundID: roundID, AICustomerID: aiCustomerID,
 		JokeID: buyJokeID, TeamID: buyTeamID, Price: price, CreatedAt: now,
 	}
+	st.recordPurchaseEvent(roundID, aiCustomerID, buyJokeID, buyTeamID, 1, price, now)
 	stBuy := st.ensureTeamState(roundID, buyTeamID)
 	stBuy.PointsEarned++
 	stBuy.UpdatedAt = now
