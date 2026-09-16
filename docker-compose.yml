@@ -14,7 +14,8 @@ services:
       APP_HOST: 0.0.0.0
       APP_LOG_LEVEL: debug
       APP_LOG_FORMAT: plain
-      APP_ADMIN_PASSWORD: "Toyota410"
+      # No built-in default: export APP_ADMIN_PASSWORD to enable instructor login.
+      APP_ADMIN_PASSWORD: "${APP_ADMIN_PASSWORD:-}"
 
       # Database configuration
       APP_DB_HOST: postgres

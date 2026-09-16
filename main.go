@@ -36,7 +36,18 @@ func run() error {
 	log.Info("starting application",
 		"port", cfg.Server.Port,
 		"log_level", cfg.Log.Level,
+		"classification_workers", cfg.Worker.PoolSize,
 	)
+
+	// Students never need the admin password, so a missing one must not take
+	// the whole class offline — but it must not pass unnoticed either. Instructor
+	// login is already refused when it is empty; this is the part that says so
+	// out loud, at boot, instead of leaving it to be discovered mid-class.
+	if !cfg.Admin.Configured() {
+		log.Warn("admin password is not configured: instructor login will be refused",
+			"fix", "set APP_ADMIN_PASSWORD",
+		)
+	}
 
 	pg, err := db.New(context.Background(), cfg.Database, log)
 	if err != nil {
@@ -49,7 +60,7 @@ func run() error {
 	classifier, modelName := buildClassifier(cfg)
 	aiCustomers := usecase.NewAICustomerService(gameRepo, nil, log)
 	classSvc := usecase.NewClassificationService(gameRepo, classifier, aiCustomers, modelName, log)
-	dispatcher := worker.NewDispatcher(classSvc, worker.DefaultDispatcherConfig(), log)
+	dispatcher := worker.NewDispatcher(classSvc, dispatcherConfig(cfg), log)
 	reconciler := worker.NewReconciler(gameRepo, dispatcher, time.Minute, log)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -61,6 +72,16 @@ func run() error {
 
 	srv := server.New(cfg, log, gameRepo, dispatcher, aiCustomers)
 	return srv.Run()
+}
+
+// dispatcherConfig translates env-driven worker settings into the pool's own
+// config. NewDispatcher still guards non-positive values, so a bad env var
+// degrades to the package default rather than to a pool that never runs.
+func dispatcherConfig(cfg *config.Config) worker.DispatcherConfig {
+	return worker.DispatcherConfig{
+		Workers: cfg.Worker.PoolSize,
+		Buffer:  cfg.Worker.QueueBuffer,
+	}
 }
 
 func buildClassifier(cfg *config.Config) (c ports.Classifier, model string) {

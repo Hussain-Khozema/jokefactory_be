@@ -80,7 +80,7 @@ All env vars use the `APP_` prefix.
 | `APP_HOST` | `0.0.0.0` | Bind host |
 | `APP_LOG_LEVEL` | `info` | debug/info/warn/error |
 | `APP_LOG_FORMAT` | `json` | json/text |
-| `APP_ADMIN_PASSWORD` | (set in env) | Instructor login |
+| `APP_ADMIN_PASSWORD` | _(empty)_ | Instructor login; **no default** — empty refuses instructor login and logs a warning at startup |
 | `APP_DB_HOST` | `localhost` | Postgres host |
 | `APP_DB_PORT` | `5432` | Postgres port |
 | `APP_DB_USER` | `postgres` | DB user |
@@ -92,6 +92,8 @@ All env vars use the `APP_` prefix.
 | `APP_LLM_DEPLOYMENT` | `gpt-4o-mini` | Deployment name |
 | `APP_LLM_TEMPERATURE` | `0` | Sampling temperature |
 | `APP_LLM_MAX_RETRIES` | `3` | Classifier retries |
+| `APP_WORKER_POOL_SIZE` | `8` | Batches classified concurrently (ceiling is the Azure deployment quota) |
+| `APP_WORKER_QUEUE_BUFFER` | `64` | Published batches that can queue before publish blocks |
 
 When `APP_LLM_BASE_URL` / `APP_LLM_API_KEY` are unset, the **stub classifier** is used (local/dev).
 

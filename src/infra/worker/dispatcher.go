@@ -11,6 +11,17 @@ type BatchProcessor interface {
 	ProcessBatch(ctx context.Context, batchID int64) error
 }
 
+// Pool fallbacks. They are the floor under a missing or nonsensical config:
+// a zero-worker pool would accept batches and never classify them, which looks
+// exactly like a slow LLM until someone goes looking hours later.
+const (
+	// defaultWorkers is IO-bound concurrency against the Azure LLM, so it is
+	// bounded by the model deployment's rate limit rather than by this host.
+	// See config.WorkerConfig.PoolSize for the reasoning behind the number.
+	defaultWorkers = 8
+	defaultBuffer  = 64
+)
+
 // DispatcherConfig tunes the in-memory classification queue.
 type DispatcherConfig struct {
 	Workers int
@@ -19,7 +30,7 @@ type DispatcherConfig struct {
 
 // DefaultDispatcherConfig returns sensible pool defaults.
 func DefaultDispatcherConfig() DispatcherConfig {
-	return DispatcherConfig{Workers: 2, Buffer: 64}
+	return DispatcherConfig{Workers: defaultWorkers, Buffer: defaultBuffer}
 }
 
 // Dispatcher is a buffered-channel ClassificationDispatcher with a worker pool.
@@ -36,11 +47,13 @@ type Dispatcher struct {
 
 // NewDispatcher builds a ClassificationDispatcher backed by an in-memory queue.
 func NewDispatcher(proc BatchProcessor, cfg DispatcherConfig, log *slog.Logger) *Dispatcher {
+	// A misconfigured env var must not be able to produce a pool that silently
+	// never classifies anything.
 	if cfg.Workers <= 0 {
-		cfg.Workers = 2
+		cfg.Workers = defaultWorkers
 	}
 	if cfg.Buffer <= 0 {
-		cfg.Buffer = 64
+		cfg.Buffer = defaultBuffer
 	}
 	return &Dispatcher{
 		jobs:    make(chan int64, cfg.Buffer),

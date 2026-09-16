@@ -27,6 +27,35 @@ type Config struct {
 
 	// LLM / Azure AI Foundry configuration
 	LLM LLMConfig
+
+	// Classification worker pool configuration
+	Worker WorkerConfig
+}
+
+// WorkerConfig tunes the in-memory classification worker pool.
+// One job is one published batch, so the pool width is how many teams get
+// classified at the same time — it is the knob that decides whether the last
+// team in a class waits seconds or minutes for its feedback.
+type WorkerConfig struct {
+	// PoolSize is how many batches are classified concurrently.
+	//
+	// These workers spend nearly all of their time blocked on an Azure LLM
+	// call (~15s per joke), so extra workers cost goroutines and almost no CPU:
+	// widening the pool shortens the tail, it does not load the host. At 2 a
+	// 12-team class drains in ~6 minutes and feedback lands wildly unevenly;
+	// at 8 the same class drains in roughly two waves, which is the difference
+	// between a usable classroom round and dead air.
+	//
+	// The real ceiling is the Azure deployment's rate limit, not this host —
+	// past the deployment's TPM/RPM quota the extra workers only earn 429s and
+	// burn the classifier's retry budget. 8 is chosen to stay comfortably under
+	// the quota of a modest gpt-4o-mini deployment; raise it only alongside the
+	// Azure quota, and lower it if the classifier starts logging throttling.
+	PoolSize int `envconfig:"WORKER_POOL_SIZE" default:"8"`
+
+	// QueueBuffer is how many published batches can wait before Enqueue blocks
+	// the publishing request. Sized for a whole class publishing at once.
+	QueueBuffer int `envconfig:"WORKER_QUEUE_BUFFER" default:"64"`
 }
 
 // LLMConfig holds Azure AI Foundry (OpenAI-compatible) settings.
@@ -112,7 +141,20 @@ type LogConfig struct {
 // AdminConfig holds admin credentials.
 type AdminConfig struct {
 	// AdminPassword is used for instructor login.
-	AdminPassword string `envconfig:"ADMIN_PASSWORD" default:"Toyota410"`
+	//
+	// Deliberately has no default: a committed default is a password anyone
+	// with repo access knows, and a deployment that lost the env var would
+	// keep accepting it without saying so. Empty means instructor login is
+	// refused outright (see usecase.AdminAuthService.Login), which is the
+	// failure we want — visible and closed, not silent and open.
+	AdminPassword string `envconfig:"ADMIN_PASSWORD"`
+}
+
+// Configured reports whether an admin password was supplied. Callers use this
+// to announce a misconfigured deployment at startup instead of discovering it
+// when an instructor cannot log in mid-class.
+func (c AdminConfig) Configured() bool {
+	return c.AdminPassword != ""
 }
 
 // DSN returns the PostgreSQL connection string.
@@ -149,6 +191,9 @@ func Load() (*Config, error) {
 	}
 	if err := envconfig.Process("APP", &cfg.LLM); err != nil {
 		return nil, fmt.Errorf("failed to load LLM config: %w", err)
+	}
+	if err := envconfig.Process("APP", &cfg.Worker); err != nil {
+		return nil, fmt.Errorf("failed to load worker config: %w", err)
 	}
 
 	return &cfg, nil
