@@ -52,7 +52,7 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
 	}
-	response.OK(c, gin.H{
+	body := gin.H{
 		"team": gin.H{
 			"id":   summary.Team.ID,
 			"name": summary.Team.Name,
@@ -74,5 +74,10 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 		// that work today still read published_jokes / discarded_jokes.
 		"jokes_created":   summary.JokesCreated,
 		"jokes_published": summary.JokesPublished,
-	})
+	}
+	// LEAN rounds only: a CLASSIC summary has no "lean" key at all.
+	if summary.Lean != nil {
+		body["lean"] = summary.Lean
+	}
+	response.OK(c, body)
 }

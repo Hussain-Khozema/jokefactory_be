@@ -41,12 +41,15 @@ type Store struct {
 	// deletes the Purchases row but leaves its +1 event behind, so this is the
 	// only record that a joke ever sold.
 	PurchaseEvents []PurchaseEvent
-	NextUser       int64
-	NextTeam       int64
-	NextBatch      int64
-	NextJoke       int64
-	NextAICust     int64
-	NextPurchase   int64
+	// Now is the clock the Lean stats read for "now" (stopped clocks of open
+	// batches and unsold jokes). Defaults to time.Now.
+	Now          func() time.Time
+	NextUser     int64
+	NextTeam     int64
+	NextBatch    int64
+	NextJoke     int64
+	NextAICust   int64
+	NextPurchase int64
 }
 
 func NewStore() *Store {
@@ -63,6 +66,7 @@ func NewStore() *Store {
 		JokeFits:     make(map[int64]*domain.JokeFit),
 		AICustomers:  make(map[int64]*domain.AICustomer),
 		Purchases:    make(map[int64]*domain.Purchase),
+		Now:          time.Now,
 		NextUser:     1,
 		NextTeam:     1,
 		NextBatch:    1,

@@ -69,6 +69,8 @@ type TeamSummary struct {
 	JokesCreated int
 	// JokesPublished mirrors PublishedJokes under the name the spec uses.
 	JokesPublished int
+	// Lean is set only for LEAN rounds; Profit already includes its costs.
+	Lean *LeanTeamStats
 }
 
 type TeamStats struct {
@@ -81,6 +83,33 @@ type TeamStats struct {
 	TotalJokes       int         `json:"total_jokes"`
 	UnsoldJokes      int         `json:"unsold_jokes"`
 	Profit           float64     `json:"profit"`
+	// Lean is set only for LEAN rounds (nil → key omitted, so CLASSIC JSON is
+	// unchanged); Profit already includes its costs.
+	Lean *LeanTeamStats `json:"lean,omitempty"`
+}
+
+// LeanTeamStats is present only for LEAN rounds (nil → key omitted in JSON).
+type LeanTeamStats struct {
+	// BatchesSubmitted counts submits (+1 batch_submission_events), not the
+	// -1 events that record processing.
+	BatchesSubmitted int `json:"batches_submitted"`
+	// SetupCost is BatchesSubmitted × setup_cost_per_batch.
+	SetupCost float64 `json:"setup_cost"`
+	// CarryingCost is carrying_cost_per_joke_minute × (WIP joke-minutes +
+	// unsold-inventory joke-minutes).
+	CarryingCost           float64      `json:"carrying_cost"`
+	AvgSubmitToPublishS    float64      `json:"avg_submit_to_publish_s"`
+	AvgPublishToFirstSaleS float64      `json:"avg_publish_to_first_sale_s"`
+	BatchSeries            []BatchPoint `json:"batch_series"`
+}
+
+// BatchPoint is one submitted batch, in submission order, for the learning curve.
+type BatchPoint struct {
+	Seq         int       `json:"seq"`
+	SubmittedAt time.Time `json:"submitted_at"`
+	Jokes       int       `json:"jokes"`
+	Published   int       `json:"published"`
+	Sold        int       `json:"sold"`
 }
 
 type SalesPoint struct {
@@ -189,6 +218,10 @@ type StatsRepository interface {
 	// ListTeamFeedbackJokes returns the latest limit published jokes for a team
 	// (newest first), each with dim_fits and whether any AI customer bought it.
 	ListTeamFeedbackJokes(ctx context.Context, roundID, teamID int64, limit int) ([]FeedbackJokeRow, error)
+	// Lean variants compute setup and carrying costs at read time and fold
+	// them into profit. The Classic queries above are not touched.
+	GetRoundStatsLean(ctx context.Context, roundID int64) (*RoundStats, error)
+	GetTeamSummaryLean(ctx context.Context, roundID, teamID int64) (*TeamSummary, error)
 }
 
 // MaxClassificationAttempts is the job-level retry ceiling before FAILED sticks.
