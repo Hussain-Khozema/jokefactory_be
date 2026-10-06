@@ -129,6 +129,26 @@ make migrate-status
 ```
 
 To wipe and recreate locally: drop/recreate the DB (or `make migrate-down`), then `migrate-up` again.
+## Local run with the hash classifier
+
+For pilots and smoke tests without Azure OpenAI keys, set `APP_LLM_MODE=hash` to use the deterministic hash classifier (default without LLM keys is the stub classifier).
+
+```bash
+export APP_ADMIN_PASSWORD=...   # pick a local value; never commit it
+APP_LLM_MODE=hash docker compose up -d --build
+make migrate-up                 # goose; DB_DSN defaults to localhost:5432
+curl -s localhost:8081/health
+```
+
+If something else already holds host port 5432, remap the compose Postgres with an override file kept outside the repo (`ports: !override ["55432:5432"]`), pass it with `docker compose -f docker-compose.yml -f <override> ...`, and run migrations with `DB_DSN=postgres://postgres:postgres@localhost:55432/jokefactory?sslmode=disable make migrate-up`.
+
+The Lean SQL integration test runs against that database:
+
+```bash
+JF_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/jokefactory?sslmode=disable \
+  go test -tags integration ./src/infra/repo/postgres/ -run Lean -v -count=1
+```
+
 ## Testing
 
 ```bash
