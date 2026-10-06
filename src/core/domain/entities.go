@@ -34,10 +34,19 @@ type Round struct {
 	SwapMargin            float64
 	FeedbackJokeCount     int
 	FeedbackPassThreshold float64
-	StartedAt             *time.Time
-	EndedAt               *time.Time
-	CreatedAt             time.Time
-	IsPoppedActive        bool
+
+	// Lean market mode (see market_mode.go).
+	MarketMode                MarketMode
+	ArrivalWindowSeconds      int
+	SetupCostPerBatch         float64
+	CarryingCostPerJokeMinute float64
+	WIPLimit                  int
+	PreferenceBase            float64
+
+	StartedAt      *time.Time
+	EndedAt        *time.Time
+	CreatedAt      time.Time
+	IsPoppedActive bool
 }
 
 type TeamRoundState struct {
@@ -94,6 +103,10 @@ type AICustomer struct {
 	StartingBudget    float64
 	RemainingBudget   float64
 	CreatedAt         time.Time
+	// Lean mode only. ArrivesAt is when this customer shops; ShoppedAt is set
+	// once they have, so they are never served twice. Both nil in CLASSIC.
+	ArrivesAt *time.Time
+	ShoppedAt *time.Time
 }
 
 // Purchase is one AI customer's holding of a published joke.

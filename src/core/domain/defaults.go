@@ -12,4 +12,11 @@ const (
 	DefaultSwapMargin            = 0.5
 	DefaultFeedbackJokeCount     = 3
 	DefaultFeedbackPassThreshold = 0.75
+
+	DefaultMarketMode                = MarketClassic
+	DefaultArrivalWindowSeconds      = 900
+	DefaultSetupCostPerBatch         = 0.0
+	DefaultCarryingCostPerJokeMinute = 0.0
+	DefaultWIPLimit                  = 0
+	DefaultPreferenceBase            = 2.0
 )

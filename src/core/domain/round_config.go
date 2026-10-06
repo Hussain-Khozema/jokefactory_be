@@ -13,6 +13,14 @@ type RoundConfig struct {
 	SwapMargin            float64
 	FeedbackJokeCount     int
 	FeedbackPassThreshold float64
+
+	// Lean market mode (see market_mode.go). Ignored when MarketMode is CLASSIC.
+	MarketMode                MarketMode
+	ArrivalWindowSeconds      int
+	SetupCostPerBatch         float64
+	CarryingCostPerJokeMinute float64
+	WIPLimit                  int
+	PreferenceBase            float64
 }
 
 // IdealProfile maps each selectable dimension to its ideal category.
@@ -33,6 +41,13 @@ func DefaultRoundConfig() RoundConfig {
 		SwapMargin:            DefaultSwapMargin,
 		FeedbackJokeCount:     DefaultFeedbackJokeCount,
 		FeedbackPassThreshold: DefaultFeedbackPassThreshold,
+
+		MarketMode:                DefaultMarketMode,
+		ArrivalWindowSeconds:      DefaultArrivalWindowSeconds,
+		SetupCostPerBatch:         DefaultSetupCostPerBatch,
+		CarryingCostPerJokeMinute: DefaultCarryingCostPerJokeMinute,
+		WIPLimit:                  DefaultWIPLimit,
+		PreferenceBase:            DefaultPreferenceBase,
 	}
 }
 
@@ -53,5 +68,12 @@ func ConfigFromRound(r *Round) RoundConfig {
 		SwapMargin:            r.SwapMargin,
 		FeedbackJokeCount:     r.FeedbackJokeCount,
 		FeedbackPassThreshold: r.FeedbackPassThreshold,
+
+		MarketMode:                r.MarketMode,
+		ArrivalWindowSeconds:      r.ArrivalWindowSeconds,
+		SetupCostPerBatch:         r.SetupCostPerBatch,
+		CarryingCostPerJokeMinute: r.CarryingCostPerJokeMinute,
+		WIPLimit:                  r.WIPLimit,
+		PreferenceBase:            r.PreferenceBase,
 	}
 }
