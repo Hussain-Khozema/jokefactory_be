@@ -997,6 +997,46 @@ func (st *Store) ListMarket(_ context.Context, roundID int64) ([]ports.MarketJok
 	return out, nil
 }
 
+// ClaimDueCustomers mirrors the postgres UPDATE … RETURNING: every due,
+// unshopped customer of the round is marked shopped at now and returned.
+func (st *Store) ClaimDueCustomers(_ context.Context, roundID int64, now time.Time) ([]domain.AICustomer, error) {
+	var out []domain.AICustomer
+	for _, c := range st.AICustomers {
+		if c.RoundID != roundID || c.ShoppedAt != nil || c.ArrivesAt == nil || c.ArrivesAt.After(now) {
+			continue
+		}
+		at := now
+		c.ShoppedAt = &at
+		out = append(out, *c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// ListPublishedCandidates returns every published, classified joke in the round.
+func (st *Store) ListPublishedCandidates(_ context.Context, roundID int64) ([]ports.CandidateJoke, error) {
+	var out []ports.CandidateJoke
+	for _, b := range st.Batches {
+		if b.RoundID != roundID {
+			continue
+		}
+		for _, j := range b.Jokes {
+			if j.PublishStatus != domain.PublishPublished {
+				continue
+			}
+			fit, ok := st.JokeFits[j.ID]
+			if !ok {
+				continue
+			}
+			out = append(out, ports.CandidateJoke{
+				JokeID: j.ID, TeamID: b.TeamID, RoundID: b.RoundID, TrueFit: fit.TrueFit,
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].JokeID < out[j].JokeID })
+	return out, nil
+}
+
 func (st *Store) GetTeamSummary(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
 	rd, ok := st.Rounds[roundID]
 	if !ok {

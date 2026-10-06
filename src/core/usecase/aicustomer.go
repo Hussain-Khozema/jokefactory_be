@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"log/slog"
+	"math"
 	"math/rand"
+	"sync"
 	"time"
 
 	"jokefactory/src/core/domain"
@@ -14,7 +16,10 @@ import (
 type AICustomerService struct {
 	repo ports.Store
 	rng  *rand.Rand
-	log  *slog.Logger
+	// rngMu guards rng in the Lean paths: ServeArrivals is called from
+	// concurrent poll handlers and *rand.Rand is not goroutine-safe.
+	rngMu sync.Mutex
+	log   *slog.Logger
 }
 
 // NewAICustomerService wires the AI customer engine. rng may be nil (seeded from time).
@@ -44,7 +49,70 @@ func (s *AICustomerService) GenerateCustomers(ctx context.Context, round *domain
 			RemainingBudget:   round.CustomerBudget,
 		})
 	}
+	if round.MarketMode.IsLean() {
+		start := time.Now().UTC()
+		if round.StartedAt != nil {
+			start = *round.StartedAt
+		}
+		s.rngMu.Lock()
+		arrivals := arrivalTimes(start, round.ArrivalWindowSeconds, len(customers), s.rng)
+		s.rngMu.Unlock()
+		for i := range customers {
+			at := arrivals[i]
+			customers[i].ArrivesAt = &at
+		}
+	}
 	return s.repo.ReplaceAICustomers(ctx, round.ID, customers)
+}
+
+// ServeArrivals serves every Lean customer whose arrival time has passed.
+// Each one shops once from the current shelf (ListPublishedCandidates),
+// buying up to budget/price jokes by fit-weighted choice, then never shops
+// again. A no-op for CLASSIC rounds and for rounds that are not ACTIVE.
+func (s *AICustomerService) ServeArrivals(ctx context.Context, roundID int64, now time.Time) error {
+	round, err := s.repo.GetRoundByID(ctx, roundID)
+	if err != nil {
+		return err
+	}
+	if !round.MarketMode.IsLean() || round.Status != domain.RoundActive {
+		return nil
+	}
+	due, err := s.repo.ClaimDueCustomers(ctx, roundID, now)
+	if err != nil || len(due) == 0 {
+		return err
+	}
+	shelf, err := s.repo.ListPublishedCandidates(ctx, roundID)
+	if err != nil {
+		return err
+	}
+	for i := range due {
+		s.serveOne(ctx, round, &due[i], shelf)
+	}
+	return nil
+}
+
+func (s *AICustomerService) serveOne(ctx context.Context, round *domain.Round, c *domain.AICustomer, shelf []ports.CandidateJoke) {
+	if round.MarketPrice <= 0 {
+		return
+	}
+	qualifying := make([]ports.CandidateJoke, 0, len(shelf))
+	for _, j := range shelf {
+		if j.TrueFit >= c.PersonalThreshold {
+			qualifying = append(qualifying, j)
+		}
+	}
+	n := int(math.Floor(c.RemainingBudget / round.MarketPrice))
+	s.rngMu.Lock()
+	basket := chooseBasket(qualifying, n, round.PreferenceBase, s.rng)
+	s.rngMu.Unlock()
+	for _, pick := range basket {
+		if err := s.repo.BuyJoke(ctx, round.ID, c.ID, pick.JokeID, pick.TeamID, round.MarketPrice); err != nil {
+			if !domain.IsConflict(err) {
+				s.log.Error("lean purchase failed",
+					"round_id", round.ID, "ai_customer_id", c.ID, "joke_id", pick.JokeID, "error", err)
+			}
+		}
+	}
 }
 
 // EvaluatePurchases runs buy/swap for every AI customer against newly classified jokes.

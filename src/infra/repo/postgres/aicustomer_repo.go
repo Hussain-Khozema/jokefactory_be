@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -17,9 +18,9 @@ func (r *Repositories) ReplaceAICustomers(ctx context.Context, roundID int64, cu
 		}
 		for _, c := range customers {
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO ai_customers (round_id, personal_threshold, starting_budget, remaining_budget)
-				VALUES ($1, $2, $3, $4)`,
-				roundID, c.PersonalThreshold, c.StartingBudget, c.RemainingBudget); err != nil {
+				INSERT INTO ai_customers (round_id, personal_threshold, starting_budget, remaining_budget, arrives_at)
+				VALUES ($1, $2, $3, $4, $5)`,
+				roundID, c.PersonalThreshold, c.StartingBudget, c.RemainingBudget, c.ArrivesAt); err != nil {
 				return err
 			}
 		}
@@ -29,7 +30,8 @@ func (r *Repositories) ReplaceAICustomers(ctx context.Context, roundID int64, cu
 
 func (r *Repositories) ListAICustomers(ctx context.Context, roundID int64) ([]domain.AICustomer, error) {
 	rows, err := r.pg.Pool.Query(ctx, `
-		SELECT ai_customer_id, round_id, personal_threshold, starting_budget, remaining_budget, created_at
+		SELECT ai_customer_id, round_id, personal_threshold, starting_budget, remaining_budget, created_at,
+		       arrives_at, shopped_at
 		FROM ai_customers WHERE round_id = $1 ORDER BY ai_customer_id`, roundID)
 	if err != nil {
 		return nil, err
@@ -41,6 +43,7 @@ func (r *Repositories) ListAICustomers(ctx context.Context, roundID int64) ([]do
 		var c domain.AICustomer
 		if err := rows.Scan(
 			&c.ID, &c.RoundID, &c.PersonalThreshold, &c.StartingBudget, &c.RemainingBudget, &c.CreatedAt,
+			&c.ArrivesAt, &c.ShoppedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -245,6 +248,56 @@ func (r *Repositories) ListMarket(ctx context.Context, roundID int64) ([]ports.M
 			return nil, err
 		}
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ClaimDueCustomers is a single UPDATE … RETURNING: under concurrency a second
+// caller's UPDATE re-checks shopped_at IS NULL after the first commits, so a
+// customer is claimed by exactly one caller. Uses idx_ai_customers_due.
+func (r *Repositories) ClaimDueCustomers(ctx context.Context, roundID int64, now time.Time) ([]domain.AICustomer, error) {
+	rows, err := r.pg.Pool.Query(ctx, `
+		UPDATE ai_customers
+		SET shopped_at = $2
+		WHERE round_id = $1 AND shopped_at IS NULL AND arrives_at IS NOT NULL AND arrives_at <= $2
+		RETURNING ai_customer_id, round_id, personal_threshold, starting_budget, remaining_budget,
+		          created_at, arrives_at, shopped_at`, roundID, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.AICustomer
+	for rows.Next() {
+		var c domain.AICustomer
+		if err := rows.Scan(&c.ID, &c.RoundID, &c.PersonalThreshold, &c.StartingBudget, &c.RemainingBudget,
+			&c.CreatedAt, &c.ArrivesAt, &c.ShoppedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ListPublishedCandidates returns the round's current shelf: every published,
+// classified joke with its team and true fit.
+func (r *Repositories) ListPublishedCandidates(ctx context.Context, roundID int64) ([]ports.CandidateJoke, error) {
+	rows, err := r.pg.Pool.Query(ctx, `
+		SELECT j.joke_id, b.team_id, b.round_id, jf.true_fit
+		FROM jokes j
+		JOIN batches b ON b.batch_id = j.batch_id
+		JOIN joke_fit jf ON jf.joke_id = j.joke_id
+		WHERE b.round_id = $1 AND j.publish_status = 'PUBLISHED'`, roundID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ports.CandidateJoke
+	for rows.Next() {
+		var c ports.CandidateJoke
+		if err := rows.Scan(&c.JokeID, &c.TeamID, &c.RoundID, &c.TrueFit); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
 	}
 	return out, rows.Err()
 }

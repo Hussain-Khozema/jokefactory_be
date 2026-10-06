@@ -260,6 +260,14 @@ type AICustomerRepository interface {
 	// SwapJoke returns weakestHeld and buys jokeID in one transaction.
 	SwapJoke(ctx context.Context, roundID, aiCustomerID, buyJokeID, buyTeamID, returnJokeID, returnTeamID int64, price float64) error
 	ListMarket(ctx context.Context, roundID int64) ([]MarketJoke, error)
+	// ClaimDueCustomers atomically marks every customer of the round whose
+	// arrives_at <= now and shopped_at IS NULL as shopped (shopped_at = now)
+	// and returns them. Two concurrent callers can never claim the same
+	// customer. Lean mode only.
+	ClaimDueCustomers(ctx context.Context, roundID int64, now time.Time) ([]domain.AICustomer, error)
+	// ListPublishedCandidates returns every published, classified joke in the
+	// round with its team and true fit — the shelf a Lean customer shops from.
+	ListPublishedCandidates(ctx context.Context, roundID int64) ([]CandidateJoke, error)
 }
 
 // Store is the composed surface used by usecases during the refactor.
