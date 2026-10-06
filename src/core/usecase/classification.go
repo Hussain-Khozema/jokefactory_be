@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"jokefactory/src/core/domain"
 	"jokefactory/src/core/domain/scoring"
@@ -22,6 +23,9 @@ type ClassificationService struct {
 // PurchaseEvaluator is called after fit materialization (AI customer buy/swap).
 type PurchaseEvaluator interface {
 	EvaluatePurchases(ctx context.Context, roundID int64, jokeIDs []int64) error
+	// ServeArrivals is the Lean-mode counterpart: newly classified jokes join
+	// the shelf and every customer whose arrival time has passed shops once.
+	ServeArrivals(ctx context.Context, roundID int64, now time.Time) error
 }
 
 // NewClassificationService wires the classification pipeline worker logic.
@@ -117,15 +121,26 @@ func (s *ClassificationService) run(ctx context.Context, job *domain.Classificat
 		return err
 	}
 	if s.purchases != nil {
-		ids := make([]int64, len(fits))
-		for i := range fits {
-			ids[i] = fits[i].JokeID
+		// The job is already marked done, so a failure here is only logged.
+		round, perr := s.repo.GetRoundByID(ctx, job.RoundID)
+		switch {
+		case perr != nil:
+			// logged below
+		case round.MarketMode.IsLean():
+			// Lean: the jokes are now on the shelf; serve whoever has arrived.
+			perr = s.purchases.ServeArrivals(ctx, job.RoundID, time.Now().UTC())
+		default:
+			ids := make([]int64, len(fits))
+			for i := range fits {
+				ids[i] = fits[i].JokeID
+			}
+			perr = s.purchases.EvaluatePurchases(ctx, job.RoundID, ids)
 		}
-		if err := s.purchases.EvaluatePurchases(ctx, job.RoundID, ids); err != nil {
+		if perr != nil {
 			s.log.Error("purchase evaluation failed after classification",
 				"batch_id", job.BatchID,
 				"round_id", job.RoundID,
-				"error", err,
+				"error", perr,
 			)
 			// Fit is already persisted; purchases can be retried via future reconcile.
 		}

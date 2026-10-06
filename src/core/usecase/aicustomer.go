@@ -303,5 +303,11 @@ func (s *AICustomerService) Market(ctx context.Context, userID, roundID int64) (
 	if round.Status != domain.RoundActive && round.Status != domain.RoundEnded {
 		return nil, domain.NewConflictError("ROUND_NOT_ACTIVE")
 	}
+	if round.MarketMode.IsLean() && round.Status == domain.RoundActive {
+		// A failed serve must not fail the read; the next poll retries.
+		if err := s.ServeArrivals(ctx, roundID, time.Now().UTC()); err != nil {
+			s.log.Error("serve arrivals on market read", "round_id", roundID, "error", err)
+		}
+	}
 	return s.repo.ListMarket(ctx, roundID)
 }

@@ -33,3 +33,13 @@ func (s *RoundService) List(ctx context.Context) ([]domain.Round, error) {
 func (s *RoundService) TeamSummary(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
 	return s.stats.GetTeamSummary(ctx, roundID, teamID)
 }
+
+// NewRoundServiceWithArrivals is NewRoundService whose team summary also
+// serves due Lean customers. aiCustomers may be nil.
+func NewRoundServiceWithArrivals(repo ports.Store, aiCustomers *AICustomerService, log *slog.Logger) *RoundService {
+	return &RoundService{
+		repo:  repo,
+		stats: NewStatsServiceWithArrivals(repo, arrivalServer(aiCustomers), log),
+		log:   log,
+	}
+}

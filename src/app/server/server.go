@@ -61,7 +61,7 @@ func New(
 	// Create services
 	healthService := usecase.NewHealthService(repo, log)
 	sessionService := usecase.NewSessionService(repo, log)
-	roundService := usecase.NewRoundService(repo, log)
+	roundService := usecase.NewRoundServiceWithArrivals(repo, aiCustomers, log)
 	batchService := usecase.NewBatchService(repo, log)
 	marketingService := usecase.NewMarketingService(repo, dispatcher, log)
 	feedbackService := usecase.NewFeedbackService(repo, log)

@@ -70,6 +70,19 @@ func (s *BatchService) Submit(ctx context.Context, userID, roundID, teamID int64
 		return nil, domain.NewConflictError("round not active")
 	}
 
+	// Lean pull rule: with a WIP limit, the Joke Maker cannot push another
+	// batch (split or raw) while Marketing already has wip_limit batches waiting.
+	if round.MarketMode.IsLean() && round.WIPLimit > 0 {
+		waiting, err := s.repo.CountSubmittedBatchesForTeam(ctx, roundID, teamID)
+		if err != nil {
+			return nil, err
+		}
+		if waiting >= round.WIPLimit {
+			return nil, domain.NewConflictError(fmt.Sprintf(
+				"WIP_LIMIT_REACHED: %d of %d batches waiting", waiting, round.WIPLimit))
+		}
+	}
+
 	// Batch-size rules need a joke count, which a raw blob does not have yet. On the raw
 	// path they are enforced in MarketingService.Split (task 3), the first point where the
 	// count exists.

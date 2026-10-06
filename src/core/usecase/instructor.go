@@ -23,7 +23,7 @@ func NewInstructorService(repo ports.Store, aiCustomers *AICustomerService, log 
 	return &InstructorService{
 		repo:        repo,
 		aiCustomers: aiCustomers,
-		stats:       NewStatsService(repo, log),
+		stats:       NewStatsServiceWithArrivals(repo, arrivalServer(aiCustomers), log),
 		log:         log,
 	}
 }
