@@ -85,68 +85,95 @@ func TestLeanStatsSQLIntegration(t *testing.T) {
 		}
 	})
 
+	// Every row gets an explicit id above the table's current maximum, so the
+	// test never depends on (or advances) the id sequences: after a reset that
+	// re-seeds explicit ids, a sequence can lag behind its table.
+	nextID := func(table, col string) int64 {
+		t.Helper()
+		return mustID(`SELECT COALESCE(MAX(` + col + `), 0) + 1000 FROM ` + table)
+	}
+
 	roundID = mustID(`
-		INSERT INTO rounds (round_number, status, batch_size, market_price, cost_of_publishing, cost_of_discard,
+		INSERT INTO rounds (round_id, round_number, status, batch_size, market_price, cost_of_publishing, cost_of_discard,
 		                    market_mode, setup_cost_per_batch, carrying_cost_per_joke_minute, started_at, ended_at)
-		VALUES (999, 'ENDED', 5, 1, 0.10, 0.01, 'LEAN', 3, 0.02, $1, $2)
-		RETURNING round_id`, at(0), at(30))
-	teamA := mustID(`INSERT INTO teams (name) VALUES ($1) RETURNING id`, suffix+"-A")
-	teamB := mustID(`INSERT INTO teams (name) VALUES ($1) RETURNING id`, suffix+"-B")
-	teamC := mustID(`INSERT INTO teams (name) VALUES ($1) RETURNING id`, suffix+"-C")
-	teams = []int64{teamA, teamB, teamC}
+		VALUES ($1, 999, 'ENDED', 5, 1, 0.10, 0.01, 'LEAN', 3, 0.02, $2, $3)
+		RETURNING round_id`, nextID("rounds", "round_id"), at(0), at(30))
+	team := func(name string) int64 {
+		id := mustID(`INSERT INTO teams (id, name) VALUES ($1, $2) RETURNING id`, nextID("teams", "id"), suffix+name)
+		teams = append(teams, id)
+		return id
+	}
+	teamA, teamB, teamC := team("-A"), team("-B"), team("-C")
 
 	mustExec(`
 		INSERT INTO team_rounds_state (round_id, team_id, points_earned, batches_created, batches_processed, published_jokes, discarded_jokes)
 		VALUES ($1, $2, 2, 1, 1, 3, 2), ($1, $3, 0, 1, 0, 0, 0), ($1, $4, 0, 0, 0, 0, 0)`,
 		roundID, teamA, teamB, teamC)
 
+	submitEvent := func(teamID, batchID int64, jokes, delta int, created time.Time) {
+		t.Helper()
+		mustExec(`
+			INSERT INTO batch_submission_events (event_id, round_id, team_id, batch_id, jokes_count, delta, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			nextID("batch_submission_events", "event_id"), roundID, teamID, batchID, jokes, delta, created)
+	}
+
 	// Team A: one processed batch of 5.
 	batchA := mustID(`
-		INSERT INTO batches (round_id, team_id, status, submitted_at, processed_at)
-		VALUES ($1, $2, 'PROCESSED', $3, $4) RETURNING batch_id`, roundID, teamA, at(0), at(6))
+		INSERT INTO batches (batch_id, round_id, team_id, status, submitted_at, processed_at)
+		VALUES ($1, $2, $3, 'PROCESSED', $4, $5) RETURNING batch_id`,
+		nextID("batches", "batch_id"), roundID, teamA, at(0), at(6))
 	var jokes [5]int64
 	for i := range jokes {
 		if i < 3 {
 			jokes[i] = mustID(`
-				INSERT INTO jokes (batch_id, joke_text, joke_title, publish_status, published_at)
-				VALUES ($1, 'j', 't', 'PUBLISHED', $2) RETURNING joke_id`, batchA, at(6))
+				INSERT INTO jokes (joke_id, batch_id, joke_text, joke_title, publish_status, published_at)
+				VALUES ($1, $2, 'j', 't', 'PUBLISHED', $3) RETURNING joke_id`, nextID("jokes", "joke_id"), batchA, at(6))
 		} else {
 			jokes[i] = mustID(`
-				INSERT INTO jokes (batch_id, joke_text, publish_status)
-				VALUES ($1, 'j', 'DISCARDED') RETURNING joke_id`, batchA)
+				INSERT INTO jokes (joke_id, batch_id, joke_text, publish_status)
+				VALUES ($1, $2, 'j', 'DISCARDED') RETURNING joke_id`, nextID("jokes", "joke_id"), batchA)
 		}
 	}
-	mustExec(`
-		INSERT INTO batch_submission_events (round_id, team_id, batch_id, jokes_count, delta, created_at)
-		VALUES ($1, $2, $3, 5, 1, $4), ($1, $2, $3, 5, -1, $5)`, roundID, teamA, batchA, at(0), at(6))
+	submitEvent(teamA, batchA, 5, 1, at(0))
+	submitEvent(teamA, batchA, 5, -1, at(6))
 
 	// Team B: an unsplit pending batch, plus a DRAFT batch that was never submitted.
 	batchB := mustID(`
-		INSERT INTO batches (round_id, team_id, status, submitted_at, raw_text, raw_text_original)
-		VALUES ($1, $2, 'SUBMITTED', $3, 'a', 'a') RETURNING batch_id`, roundID, teamB, at(20))
-	mustExec(`INSERT INTO batches (round_id, team_id, status) VALUES ($1, $2, 'DRAFT')`, roundID, teamB)
-	mustExec(`
-		INSERT INTO batch_submission_events (round_id, team_id, batch_id, jokes_count, delta, created_at)
-		VALUES ($1, $2, $3, 0, 1, $4)`, roundID, teamB, batchB, at(20))
+		INSERT INTO batches (batch_id, round_id, team_id, status, submitted_at, raw_text, raw_text_original)
+		VALUES ($1, $2, $3, 'SUBMITTED', $4, 'a', 'a') RETURNING batch_id`,
+		nextID("batches", "batch_id"), roundID, teamB, at(20))
+	mustExec(`INSERT INTO batches (batch_id, round_id, team_id, status) VALUES ($1, $2, $3, 'DRAFT')`,
+		nextID("batches", "batch_id"), roundID, teamB)
+	submitEvent(teamB, batchB, 0, 1, at(20))
 
 	// Purchases: joke 1 bought then returned; joke 2 bought by two customers.
 	cust := func() int64 {
 		return mustID(`
-			INSERT INTO ai_customers (round_id, personal_threshold, starting_budget, remaining_budget)
-			VALUES ($1, 7, 3, 2) RETURNING ai_customer_id`, roundID)
+			INSERT INTO ai_customers (ai_customer_id, round_id, personal_threshold, starting_budget, remaining_budget)
+			VALUES ($1, $2, 7, 3, 2) RETURNING ai_customer_id`, nextID("ai_customers", "ai_customer_id"), roundID)
 	}
 	c1, c2, c3 := cust(), cust(), cust()
-	mustExec(`
-		INSERT INTO purchase_events (round_id, ai_customer_id, joke_id, team_id, delta, price, created_at) VALUES
-		 ($1, $2, $5, $7,  1, 1, $8),
-		 ($1, $2, $5, $7, -1, 1, $9),
-		 ($1, $3, $6, $7,  1, 1, $10),
-		 ($1, $4, $6, $7,  1, 1, $11)`,
-		roundID, c1, c2, c3, jokes[0], jokes[1], teamA, at(10), at(12), at(20), at(25))
-	mustExec(`
-		INSERT INTO purchases (round_id, ai_customer_id, joke_id, team_id, price, created_at)
-		VALUES ($1, $2, $4, $5, 1, $6), ($1, $3, $4, $5, 1, $7)`,
-		roundID, c2, c3, jokes[1], teamA, at(20), at(25))
+	purchaseEvent := func(custID, jokeID int64, delta int, created time.Time) {
+		t.Helper()
+		mustExec(`
+			INSERT INTO purchase_events (event_id, round_id, ai_customer_id, joke_id, team_id, delta, price, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+			nextID("purchase_events", "event_id"), roundID, custID, jokeID, teamA, delta, created)
+	}
+	purchaseEvent(c1, jokes[0], 1, at(10))
+	purchaseEvent(c1, jokes[0], -1, at(12))
+	purchaseEvent(c2, jokes[1], 1, at(20))
+	purchaseEvent(c3, jokes[1], 1, at(25))
+	for _, h := range []struct {
+		cust int64
+		at   time.Time
+	}{{c2, at(20)}, {c3, at(25)}} {
+		mustExec(`
+			INSERT INTO purchases (purchase_id, round_id, ai_customer_id, joke_id, team_id, price, created_at)
+			VALUES ($1, $2, $3, $4, $5, 1, $6)`,
+			nextID("purchases", "purchase_id"), roundID, h.cust, jokes[1], teamA, h.at)
+	}
 
 	approx := func(got, want float64) bool { return math.Abs(got-want) < 0.005 }
 	type want struct {

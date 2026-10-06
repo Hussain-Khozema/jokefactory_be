@@ -58,6 +58,7 @@ func run() error {
 	gameRepo := postgres.New(pg, log)
 
 	classifier, modelName := buildClassifier(cfg)
+	log.Info("classifier selected", "classifier", modelName)
 	aiCustomers := usecase.NewAICustomerService(gameRepo, nil, log)
 	classSvc := usecase.NewClassificationService(gameRepo, classifier, aiCustomers, modelName, log)
 	dispatcher := worker.NewDispatcher(classSvc, dispatcherConfig(cfg), log)
