@@ -21,6 +21,13 @@ type PublicRound struct {
 	StartedAt         any     `json:"started_at"`
 	EndedAt           any     `json:"ended_at"`
 	IsPoppedActive    bool    `json:"is_popped_active"`
+
+	// Lean market mode. Students see these so the UI can show lean controls.
+	MarketMode                string  `json:"market_mode"`
+	ArrivalWindowSeconds      int     `json:"arrival_window_seconds"`
+	SetupCostPerBatch         float64 `json:"setup_cost_per_batch"`
+	CarryingCostPerJokeMinute float64 `json:"carrying_cost_per_joke_minute"`
+	WIPLimit                  int     `json:"wip_limit"` // 0 means no limit
 }
 
 // InstructorRound includes engine knobs instructors may tune.
@@ -31,6 +38,8 @@ type InstructorRound struct {
 	SwapMargin            float64           `json:"swap_margin"`
 	FeedbackPassThreshold float64           `json:"feedback_pass_threshold"`
 	IdealProfile          map[string]string `json:"ideal_profile,omitempty"`
+	// PreferenceBase is instructor-only, like buy_threshold.
+	PreferenceBase float64 `json:"preference_base"`
 }
 
 // ToPublicRound maps a domain round for student endpoints.
@@ -54,6 +63,12 @@ func ToPublicRound(rd *domain.Round) PublicRound {
 		StartedAt:         rd.StartedAt,
 		EndedAt:           rd.EndedAt,
 		IsPoppedActive:    rd.IsPoppedActive,
+
+		MarketMode:                string(rd.MarketMode),
+		ArrivalWindowSeconds:      rd.ArrivalWindowSeconds,
+		SetupCostPerBatch:         rd.SetupCostPerBatch,
+		CarryingCostPerJokeMinute: rd.CarryingCostPerJokeMinute,
+		WIPLimit:                  rd.WIPLimit,
 	}
 }
 
@@ -66,5 +81,6 @@ func ToInstructorRound(rd *domain.Round, profile domain.IdealProfile) Instructor
 		SwapMargin:            rd.SwapMargin,
 		FeedbackPassThreshold: rd.FeedbackPassThreshold,
 		IdealProfile:          IdealProfileFromDomain(profile),
+		PreferenceBase:        rd.PreferenceBase,
 	}
 }

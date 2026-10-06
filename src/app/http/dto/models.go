@@ -73,6 +73,14 @@ type ConfigRequest struct {
 	FeedbackJokeCount     *int              `json:"feedback_joke_count"`
 	FeedbackPassThreshold *float64          `json:"feedback_pass_threshold"`
 	IdealProfile          map[string]string `json:"ideal_profile"`
+
+	// Lean market mode settings (see domain.MarketMode).
+	MarketMode                *string  `json:"market_mode"`
+	ArrivalWindowSeconds      *int     `json:"arrival_window_seconds"`
+	SetupCostPerBatch         *float64 `json:"setup_cost_per_batch"`
+	CarryingCostPerJokeMinute *float64 `json:"carrying_cost_per_joke_minute"`
+	WIPLimit                  *int     `json:"wip_limit"` // 0 means no limit
+	PreferenceBase            *float64 `json:"preference_base"`
 }
 
 // IdealProfileToDomain converts a string-keyed map to domain.IdealProfile.

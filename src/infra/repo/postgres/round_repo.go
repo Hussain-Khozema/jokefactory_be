@@ -76,12 +76,20 @@ func (r *Repositories) UpdateRoundConfig(ctx context.Context, roundID int64, cfg
 		    jitter = $9,
 		    swap_margin = $10,
 		    feedback_joke_count = $11,
-		    feedback_pass_threshold = $12
+		    feedback_pass_threshold = $12,
+		    market_mode = $13,
+		    arrival_window_seconds = $14,
+		    setup_cost_per_batch = $15,
+		    carrying_cost_per_joke_minute = $16,
+		    wip_limit = $17,
+		    preference_base = $18
 		WHERE round_id = $1
 		RETURNING `+roundColumns, roundID,
 		cfg.CustomerBudget, cfg.BatchSize, cfg.MarketPrice, cfg.CostOfPublishing,
 		cfg.CostOfDiscard, cfg.CustomerCount, cfg.BuyThreshold, cfg.Jitter,
-		cfg.SwapMargin, cfg.FeedbackJokeCount, cfg.FeedbackPassThreshold))
+		cfg.SwapMargin, cfg.FeedbackJokeCount, cfg.FeedbackPassThreshold,
+		string(cfg.MarketMode), cfg.ArrivalWindowSeconds, cfg.SetupCostPerBatch,
+		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
@@ -105,14 +113,19 @@ func (r *Repositories) InsertRoundConfig(ctx context.Context, roundID int64, cfg
 			round_id, round_number, status,
 			customer_budget, batch_size, market_price, cost_of_publishing,
 			cost_of_discard, customer_count, buy_threshold, jitter, swap_margin,
-			feedback_joke_count, feedback_pass_threshold
+			feedback_joke_count, feedback_pass_threshold,
+			market_mode, arrival_window_seconds, setup_cost_per_batch,
+			carrying_cost_per_joke_minute, wip_limit, preference_base
 		)
-		VALUES ($1, $2, 'CONFIGURED', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, 'CONFIGURED', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+			$14, $15, $16, $17, $18, $19)
 		RETURNING `+roundColumns,
 		roundID, int(roundID),
 		cfg.CustomerBudget, cfg.BatchSize, cfg.MarketPrice, cfg.CostOfPublishing,
 		cfg.CostOfDiscard, cfg.CustomerCount, cfg.BuyThreshold, cfg.Jitter,
-		cfg.SwapMargin, cfg.FeedbackJokeCount, cfg.FeedbackPassThreshold))
+		cfg.SwapMargin, cfg.FeedbackJokeCount, cfg.FeedbackPassThreshold,
+		string(cfg.MarketMode), cfg.ArrivalWindowSeconds, cfg.SetupCostPerBatch,
+		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase))
 }
 
 func (r *Repositories) UpsertIdealProfile(ctx context.Context, roundID int64, profile domain.IdealProfile) error {
@@ -250,6 +263,12 @@ func (r *Repositories) ResetGame(ctx context.Context) error {
 			    swap_margin = $9,
 			    feedback_joke_count = $10,
 			    feedback_pass_threshold = $11,
+			    market_mode = $12,
+			    arrival_window_seconds = $13,
+			    setup_cost_per_batch = $14,
+			    carrying_cost_per_joke_minute = $15,
+			    wip_limit = $16,
+			    preference_base = $17,
 			    started_at = NULL,
 			    ended_at = NULL,
 			    is_popped_active = FALSE`,
@@ -264,6 +283,12 @@ func (r *Repositories) ResetGame(ctx context.Context) error {
 			cfg.SwapMargin,
 			cfg.FeedbackJokeCount,
 			cfg.FeedbackPassThreshold,
+			string(cfg.MarketMode),
+			cfg.ArrivalWindowSeconds,
+			cfg.SetupCostPerBatch,
+			cfg.CarryingCostPerJokeMinute,
+			cfg.WIPLimit,
+			cfg.PreferenceBase,
 		); err != nil {
 			return err
 		}

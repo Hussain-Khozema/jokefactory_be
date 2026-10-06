@@ -99,6 +99,34 @@ func validateRoundConfig(cfg *domain.RoundConfig) error {
 	if cfg.SwapMargin < 0 {
 		return domain.NewValidationError("swap_margin", "must be >= 0")
 	}
+	return validateLeanConfig(cfg)
+}
+
+// validateLeanConfig checks the lean market settings and normalises
+// MarketMode in place: "" (older callers) becomes CLASSIC and the mode is
+// upper-cased, so only CLASSIC or LEAN ever reach the store.
+func validateLeanConfig(cfg *domain.RoundConfig) error {
+	mode, err := domain.ParseMarketMode(string(cfg.MarketMode))
+	if err != nil {
+		return domain.NewValidationError("market_mode", "must be CLASSIC or LEAN")
+	}
+	cfg.MarketMode = mode
+	if cfg.ArrivalWindowSeconds < 1 {
+		return domain.NewValidationError("arrival_window_seconds", "must be >= 1")
+	}
+	if cfg.SetupCostPerBatch < 0 {
+		return domain.NewValidationError("setup_cost_per_batch", "must be >= 0")
+	}
+	if cfg.CarryingCostPerJokeMinute < 0 {
+		return domain.NewValidationError("carrying_cost_per_joke_minute", "must be >= 0")
+	}
+	// wip_limit 0 means "no limit".
+	if cfg.WIPLimit < 0 {
+		return domain.NewValidationError("wip_limit", "must be >= 0 (0 means no limit)")
+	}
+	if cfg.PreferenceBase <= 1 {
+		return domain.NewValidationError("preference_base", "must be > 1")
+	}
 	return nil
 }
 
@@ -316,6 +344,26 @@ func MergeConfig(base *domain.RoundConfig, overlay *PartialRoundConfig) domain.R
 	if overlay.FeedbackPassThreshold != nil {
 		cfg.FeedbackPassThreshold = *overlay.FeedbackPassThreshold
 	}
+	// MarketMode is copied raw; validateRoundConfig parses and normalises it
+	// so an unknown value becomes a market_mode validation error.
+	if overlay.MarketMode != nil {
+		cfg.MarketMode = domain.MarketMode(*overlay.MarketMode)
+	}
+	if overlay.ArrivalWindowSeconds != nil {
+		cfg.ArrivalWindowSeconds = *overlay.ArrivalWindowSeconds
+	}
+	if overlay.SetupCostPerBatch != nil {
+		cfg.SetupCostPerBatch = *overlay.SetupCostPerBatch
+	}
+	if overlay.CarryingCostPerJokeMinute != nil {
+		cfg.CarryingCostPerJokeMinute = *overlay.CarryingCostPerJokeMinute
+	}
+	if overlay.WIPLimit != nil {
+		cfg.WIPLimit = *overlay.WIPLimit
+	}
+	if overlay.PreferenceBase != nil {
+		cfg.PreferenceBase = *overlay.PreferenceBase
+	}
 	return cfg
 }
 
@@ -332,4 +380,12 @@ type PartialRoundConfig struct {
 	SwapMargin            *float64
 	FeedbackJokeCount     *int
 	FeedbackPassThreshold *float64
+
+	// Lean market mode settings. nil keeps the existing value.
+	MarketMode                *string
+	ArrivalWindowSeconds      *int
+	SetupCostPerBatch         *float64
+	CarryingCostPerJokeMinute *float64
+	WIPLimit                  *int // 0 means no limit
+	PreferenceBase            *float64
 }

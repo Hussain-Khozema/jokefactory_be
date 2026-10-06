@@ -11,7 +11,9 @@ import (
 const roundColumns = `round_id, round_number, status, customer_budget, batch_size,
 	market_price, cost_of_publishing, cost_of_discard, customer_count,
 	buy_threshold, jitter, swap_margin, feedback_joke_count, feedback_pass_threshold,
-	started_at, ended_at, created_at, is_popped_active`
+	started_at, ended_at, created_at, is_popped_active,
+	market_mode, arrival_window_seconds, setup_cost_per_batch,
+	carrying_cost_per_joke_minute, wip_limit, preference_base`
 
 type scannable interface {
 	Scan(dest ...any) error
@@ -24,6 +26,8 @@ func scanRound(row scannable) (*domain.Round, error) {
 		&rd.MarketPrice, &rd.CostOfPublishing, &rd.CostOfDiscard, &rd.CustomerCount,
 		&rd.BuyThreshold, &rd.Jitter, &rd.SwapMargin, &rd.FeedbackJokeCount, &rd.FeedbackPassThreshold,
 		&rd.StartedAt, &rd.EndedAt, &rd.CreatedAt, &rd.IsPoppedActive,
+		&rd.MarketMode, &rd.ArrivalWindowSeconds, &rd.SetupCostPerBatch,
+		&rd.CarryingCostPerJokeMinute, &rd.WIPLimit, &rd.PreferenceBase,
 	)
 	if err != nil {
 		return nil, err

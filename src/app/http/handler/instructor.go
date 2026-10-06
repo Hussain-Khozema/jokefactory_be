@@ -58,17 +58,23 @@ func (h *InstructorHandler) Config(c *gin.Context) {
 	}
 
 	cfg := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{
-		CustomerBudget:        req.CustomerBudget,
-		BatchSize:             req.BatchSize,
-		MarketPrice:           req.MarketPrice,
-		CostOfPublishing:      req.CostOfPublishing,
-		CostOfDiscard:         req.CostOfDiscard,
-		CustomerCount:         req.CustomerCount,
-		BuyThreshold:          req.BuyThreshold,
-		Jitter:                req.Jitter,
-		SwapMargin:            req.SwapMargin,
-		FeedbackJokeCount:     req.FeedbackJokeCount,
-		FeedbackPassThreshold: req.FeedbackPassThreshold,
+		CustomerBudget:            req.CustomerBudget,
+		BatchSize:                 req.BatchSize,
+		MarketPrice:               req.MarketPrice,
+		CostOfPublishing:          req.CostOfPublishing,
+		CostOfDiscard:             req.CostOfDiscard,
+		CustomerCount:             req.CustomerCount,
+		BuyThreshold:              req.BuyThreshold,
+		Jitter:                    req.Jitter,
+		SwapMargin:                req.SwapMargin,
+		FeedbackJokeCount:         req.FeedbackJokeCount,
+		FeedbackPassThreshold:     req.FeedbackPassThreshold,
+		MarketMode:                req.MarketMode,
+		ArrivalWindowSeconds:      req.ArrivalWindowSeconds,
+		SetupCostPerBatch:         req.SetupCostPerBatch,
+		CarryingCostPerJokeMinute: req.CarryingCostPerJokeMinute,
+		WIPLimit:                  req.WIPLimit,
+		PreferenceBase:            req.PreferenceBase,
 	})
 
 	result, err := h.instructorService.Config(
@@ -163,17 +169,23 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 			return
 		}
 		cfg := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{
-			CustomerBudget:        req.CustomerBudget,
-			BatchSize:             req.BatchSize,
-			MarketPrice:           req.MarketPrice,
-			CostOfPublishing:      req.CostOfPublishing,
-			CostOfDiscard:         req.CostOfDiscard,
-			CustomerCount:         req.CustomerCount,
-			BuyThreshold:          req.BuyThreshold,
-			Jitter:                req.Jitter,
-			SwapMargin:            req.SwapMargin,
-			FeedbackJokeCount:     req.FeedbackJokeCount,
-			FeedbackPassThreshold: req.FeedbackPassThreshold,
+			CustomerBudget:            req.CustomerBudget,
+			BatchSize:                 req.BatchSize,
+			MarketPrice:               req.MarketPrice,
+			CostOfPublishing:          req.CostOfPublishing,
+			CostOfDiscard:             req.CostOfDiscard,
+			CustomerCount:             req.CustomerCount,
+			BuyThreshold:              req.BuyThreshold,
+			Jitter:                    req.Jitter,
+			SwapMargin:                req.SwapMargin,
+			FeedbackJokeCount:         req.FeedbackJokeCount,
+			FeedbackPassThreshold:     req.FeedbackPassThreshold,
+			MarketMode:                req.MarketMode,
+			ArrivalWindowSeconds:      req.ArrivalWindowSeconds,
+			SetupCostPerBatch:         req.SetupCostPerBatch,
+			CarryingCostPerJokeMinute: req.CarryingCostPerJokeMinute,
+			WIPLimit:                  req.WIPLimit,
+			PreferenceBase:            req.PreferenceBase,
 		})
 		if _, err := h.instructorService.Config(
 			c.Request.Context(), roundID, &cfg, dto.IdealProfileToDomain(req.IdealProfile),
@@ -204,6 +216,12 @@ func hasConfigFields(req *dto.ConfigRequest) bool {
 		req.SwapMargin != nil ||
 		req.FeedbackJokeCount != nil ||
 		req.FeedbackPassThreshold != nil ||
+		req.MarketMode != nil ||
+		req.ArrivalWindowSeconds != nil ||
+		req.SetupCostPerBatch != nil ||
+		req.CarryingCostPerJokeMinute != nil ||
+		req.WIPLimit != nil ||
+		req.PreferenceBase != nil ||
 		req.IdealProfile != nil
 }
 

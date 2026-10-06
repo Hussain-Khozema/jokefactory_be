@@ -1201,6 +1201,12 @@ func applyConfig(r *domain.Round, cfg *domain.RoundConfig) {
 	r.SwapMargin = cfg.SwapMargin
 	r.FeedbackJokeCount = cfg.FeedbackJokeCount
 	r.FeedbackPassThreshold = cfg.FeedbackPassThreshold
+	r.MarketMode = cfg.MarketMode
+	r.ArrivalWindowSeconds = cfg.ArrivalWindowSeconds
+	r.SetupCostPerBatch = cfg.SetupCostPerBatch
+	r.CarryingCostPerJokeMinute = cfg.CarryingCostPerJokeMinute
+	r.WIPLimit = cfg.WIPLimit
+	r.PreferenceBase = cfg.PreferenceBase
 }
 
 func cloneUser(u *domain.User) *domain.User {
