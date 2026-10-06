@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"jokefactory/src/core/domain"
+	"jokefactory/src/core/ports"
 	"jokefactory/src/core/usecase/testutil"
 )
 
@@ -170,5 +171,49 @@ func TestServeArrivalsIsANoOpInClassic(t *testing.T) {
 	}
 	if countServed(t, st, round.ID) != 0 {
 		t.Fatal("classic customers were served")
+	}
+}
+
+// ctxStore fails the serve-path calls when their ctx is done, as pgx would.
+type ctxStore struct{ *testutil.Store }
+
+func (s ctxStore) ClaimDueCustomers(ctx context.Context, roundID int64, now time.Time) ([]domain.AICustomer, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.Store.ClaimDueCustomers(ctx, roundID, now)
+}
+
+func (s ctxStore) ListPublishedCandidates(ctx context.Context, roundID int64) ([]ports.CandidateJoke, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.Store.ListPublishedCandidates(ctx, roundID)
+}
+
+func (s ctxStore) BuyJoke(ctx context.Context, roundID, aiCustomerID, jokeID, teamID int64, price float64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Store.BuyJoke(ctx, roundID, aiCustomerID, jokeID, teamID, price)
+}
+
+func TestServeArrivalsSurvivesCancelledRequest(t *testing.T) {
+	st := testutil.NewStore()
+	round, hi, lo := leanRound(t, st)
+	svc := NewAICustomerService(ctxStore{st}, rand.New(rand.NewSource(1)), slog.Default())
+	if err := svc.GenerateCustomers(context.Background(), round); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := svc.ServeArrivals(ctx, round.ID, round.StartedAt.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if n := countServed(t, st, round.ID); n != 10 {
+		t.Fatalf("served %d, want 10", n)
+	}
+	if soldCount(t, st, hi) != 10 || soldCount(t, st, lo) != 10 {
+		t.Fatalf("purchases lost to cancellation: hi=%d lo=%d", soldCount(t, st, hi), soldCount(t, st, lo))
 	}
 }

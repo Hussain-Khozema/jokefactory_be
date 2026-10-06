@@ -263,7 +263,9 @@ type AICustomerRepository interface {
 	// ClaimDueCustomers atomically marks every customer of the round whose
 	// arrives_at <= now and shopped_at IS NULL as shopped (shopped_at = now)
 	// and returns them. Two concurrent callers can never claim the same
-	// customer. Lean mode only.
+	// customer. Lean mode only. now is the reference time for in-memory
+	// stores only; Postgres ignores it and uses the database clock (now()),
+	// the same clock that stamped rounds.started_at and so arrives_at.
 	ClaimDueCustomers(ctx context.Context, roundID int64, now time.Time) ([]domain.AICustomer, error)
 	// ListPublishedCandidates returns every published, classified joke in the
 	// round with its team and true fit — the shelf a Lean customer shops from.

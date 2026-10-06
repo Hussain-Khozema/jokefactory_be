@@ -69,6 +69,14 @@ func (s *AICustomerService) GenerateCustomers(ctx context.Context, round *domain
 // Each one shops once from the current shelf (ListPublishedCandidates),
 // buying up to budget/price jokes by fit-weighted choice, then never shops
 // again. A no-op for CLASSIC rounds and for rounds that are not ACTIVE.
+//
+// AT-MOST-ONCE, deliberately: customers are claimed (shopped_at committed)
+// before any purchase is made. A crash mid-serve therefore loses that
+// customer's basket, but no customer is ever served twice by concurrent polls.
+//
+// The work after the claim is detached from ctx (with its own timeout): the
+// caller is usually a poll request, and a client that disconnects after the
+// claim must not leave claimed customers with their budget unspent.
 func (s *AICustomerService) ServeArrivals(ctx context.Context, roundID int64, now time.Time) error {
 	round, err := s.repo.GetRoundByID(ctx, roundID)
 	if err != nil {
@@ -77,16 +85,18 @@ func (s *AICustomerService) ServeArrivals(ctx context.Context, roundID int64, no
 	if !round.MarketMode.IsLean() || round.Status != domain.RoundActive {
 		return nil
 	}
-	due, err := s.repo.ClaimDueCustomers(ctx, roundID, now)
+	serveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	due, err := s.repo.ClaimDueCustomers(serveCtx, roundID, now)
 	if err != nil || len(due) == 0 {
 		return err
 	}
-	shelf, err := s.repo.ListPublishedCandidates(ctx, roundID)
+	shelf, err := s.repo.ListPublishedCandidates(serveCtx, roundID)
 	if err != nil {
 		return err
 	}
 	for i := range due {
-		s.serveOne(ctx, round, &due[i], shelf)
+		s.serveOne(serveCtx, round, &due[i], shelf)
 	}
 	return nil
 }

@@ -255,13 +255,17 @@ func (r *Repositories) ListMarket(ctx context.Context, roundID int64) ([]ports.M
 // ClaimDueCustomers is a single UPDATE … RETURNING: under concurrency a second
 // caller's UPDATE re-checks shopped_at IS NULL after the first commits, so a
 // customer is claimed by exactly one caller. Uses idx_ai_customers_due.
-func (r *Repositories) ClaimDueCustomers(ctx context.Context, roundID int64, now time.Time) ([]domain.AICustomer, error) {
+//
+// The now argument is ignored: arrives_at derives from rounds.started_at,
+// which StartRound stamps with the database's now(), so the comparison uses
+// the same clock and app-server clock skew cannot shift arrivals.
+func (r *Repositories) ClaimDueCustomers(ctx context.Context, roundID int64, _ time.Time) ([]domain.AICustomer, error) {
 	rows, err := r.pg.Pool.Query(ctx, `
 		UPDATE ai_customers
-		SET shopped_at = $2
-		WHERE round_id = $1 AND shopped_at IS NULL AND arrives_at IS NOT NULL AND arrives_at <= $2
+		SET shopped_at = now()
+		WHERE round_id = $1 AND shopped_at IS NULL AND arrives_at IS NOT NULL AND arrives_at <= now()
 		RETURNING ai_customer_id, round_id, personal_threshold, starting_budget, remaining_budget,
-		          created_at, arrives_at, shopped_at`, roundID, now)
+		          created_at, arrives_at, shopped_at`, roundID)
 	if err != nil {
 		return nil, err
 	}
