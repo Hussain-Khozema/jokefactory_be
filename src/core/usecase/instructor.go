@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"log/slog"
+	"math"
 	"math/rand"
 	"time"
 
@@ -55,6 +56,9 @@ func (s *InstructorService) Config(ctx context.Context, roundID int64, cfg *doma
 			return nil, err
 		}
 	}
+	if err := s.checkMarketModeLock(ctx, roundID, cfg.MarketMode); err != nil {
+		return nil, err
+	}
 
 	round, err := s.repo.InsertRoundConfig(ctx, roundID, cfg)
 	if err != nil {
@@ -75,6 +79,28 @@ func (s *InstructorService) Config(ctx context.Context, roundID int64, cfg *doma
 	}
 
 	return &ConfigResult{Round: round, IdealProfile: storedProfile}, nil
+}
+
+// checkMarketModeLock refuses to change market_mode once a round has left
+// CONFIGURED. Lean customers get arrival times only in StartRound, so a
+// switch mid-round would strand them (to LEAN) or make them all shop at once
+// (to CLASSIC). Other fields, and re-sending the same mode, are unaffected.
+func (s *InstructorService) checkMarketModeLock(ctx context.Context, roundID int64, mode domain.MarketMode) error {
+	existing, err := s.repo.GetRoundByID(ctx, roundID)
+	if err != nil {
+		if domain.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if existing.Status == domain.RoundConfigured {
+		return nil
+	}
+	stored, err := domain.ParseMarketMode(string(existing.MarketMode))
+	if err != nil || stored != mode {
+		return domain.NewConflictError("MARKET_MODE_LOCKED: market mode can only change before the round starts")
+	}
+	return nil
 }
 
 func validateRoundConfig(cfg *domain.RoundConfig) error {
@@ -124,7 +150,9 @@ func validateLeanConfig(cfg *domain.RoundConfig) error {
 	if cfg.WIPLimit < 0 {
 		return domain.NewValidationError("wip_limit", "must be >= 0 (0 means no limit)")
 	}
-	if cfg.PreferenceBase <= 1 {
+	// The column is NUMERIC(6,2) CHECK > 1: validate the value Postgres will
+	// store, so 1.001 (stored as 1.00) is a 400 rather than a DB error.
+	if math.Round(cfg.PreferenceBase*100)/100 <= 1 {
 		return domain.NewValidationError("preference_base", "must be > 1")
 	}
 	return nil

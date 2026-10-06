@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"testing"
@@ -41,18 +42,27 @@ func TestConfigPersistsLeanSettings(t *testing.T) {
 func TestConfigRejectsBadLeanSettings(t *testing.T) {
 	_, svc := newLeanConfigInstructor()
 	for name, mutate := range map[string]func(*domain.RoundConfig){
-		"window":   func(c *domain.RoundConfig) { c.ArrivalWindowSeconds = 0 },
-		"setup":    func(c *domain.RoundConfig) { c.SetupCostPerBatch = -1 },
-		"carrying": func(c *domain.RoundConfig) { c.CarryingCostPerJokeMinute = -0.1 },
-		"wip":      func(c *domain.RoundConfig) { c.WIPLimit = -1 },
-		"base":     func(c *domain.RoundConfig) { c.PreferenceBase = 1 },
-		"mode":     func(c *domain.RoundConfig) { c.MarketMode = "SIDEWAYS" },
+		"window":           func(c *domain.RoundConfig) { c.ArrivalWindowSeconds = 0 },
+		"setup":            func(c *domain.RoundConfig) { c.SetupCostPerBatch = -1 },
+		"carrying":         func(c *domain.RoundConfig) { c.CarryingCostPerJokeMinute = -0.1 },
+		"wip":              func(c *domain.RoundConfig) { c.WIPLimit = -1 },
+		"base":             func(c *domain.RoundConfig) { c.PreferenceBase = 1 },
+		"base_rounds_to_1": func(c *domain.RoundConfig) { c.PreferenceBase = 1.001 },
+		"mode":             func(c *domain.RoundConfig) { c.MarketMode = "SIDEWAYS" },
 	} {
 		cfg := domain.DefaultRoundConfig()
 		mutate(&cfg)
 		if _, err := svc.Config(context.Background(), 1, &cfg, nil); !domain.IsValidationError(err) {
 			t.Fatalf("%s: want validation error, got %v", name, err)
 		}
+	}
+
+	cfg := domain.DefaultRoundConfig()
+	cfg.MarketMode = "SIDEWAYS"
+	_, err := svc.Config(context.Background(), 1, &cfg, nil)
+	var de *domain.DomainError
+	if !errors.As(err, &de) || de.Field != "market_mode" {
+		t.Fatalf("want market_mode validation error, got %v", err)
 	}
 }
 
@@ -112,5 +122,43 @@ func TestMergeConfigLeanFields(t *testing.T) {
 	kept := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{})
 	if kept != base {
 		t.Fatalf("nil overlay changed config: %+v", kept)
+	}
+}
+
+func TestConfigLocksMarketModeOnceStarted(t *testing.T) {
+	_, svc := newLeanConfigInstructor()
+	ctx := context.Background()
+
+	// CONFIGURED: the mode may change freely.
+	cfg := domain.DefaultRoundConfig()
+	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
+		t.Fatal(err)
+	}
+	cfg.MarketMode = domain.MarketLean
+	if _, err := svc.Config(ctx, 1, &cfg, nil); err != nil {
+		t.Fatalf("mode change on CONFIGURED round: %v", err)
+	}
+	if _, err := svc.StartRound(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	// ACTIVE: re-sending the same mode with other changes is fine.
+	cfg.MarketPrice = 2
+	if _, err := svc.Config(ctx, 1, &cfg, nil); err != nil {
+		t.Fatalf("same mode on ACTIVE round: %v", err)
+	}
+
+	// ACTIVE: changing the mode is a conflict and nothing is written.
+	cfg.MarketMode = domain.MarketClassic
+	cfg.MarketPrice = 3
+	if _, err := svc.Config(ctx, 1, &cfg, nil); !domain.IsConflict(err) {
+		t.Fatalf("mode change on ACTIVE round: want conflict, got %v", err)
+	}
+	rd, err := svc.GetRound(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rd.MarketMode != domain.MarketLean || rd.MarketPrice != 2 {
+		t.Fatalf("rejected config was written: %+v", rd)
 	}
 }
