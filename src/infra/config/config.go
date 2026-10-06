@@ -74,6 +74,10 @@ type LLMConfig struct {
 
 	// MaxRetries is how many times the Azure adapter retries a failed call.
 	MaxRetries int `envconfig:"LLM_MAX_RETRIES" default:"3"`
+
+	// Mode selects the classifier: "" = Azure when credentials exist, else the
+	// stub; "hash" = HashClassifier, for local pilots only.
+	Mode string `envconfig:"LLM_MODE" default:""`
 }
 
 // Enabled reports whether LLM credentials are configured.

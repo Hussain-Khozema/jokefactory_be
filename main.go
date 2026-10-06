@@ -85,6 +85,9 @@ func dispatcherConfig(cfg *config.Config) worker.DispatcherConfig {
 }
 
 func buildClassifier(cfg *config.Config) (c ports.Classifier, model string) {
+	if cfg.LLM.Mode == "hash" {
+		return llm.HashClassifier{}, "hash"
+	}
 	if cfg.LLM.Enabled() {
 		return llm.NewAzureClassifier(cfg.LLM), cfg.LLM.Deployment
 	}

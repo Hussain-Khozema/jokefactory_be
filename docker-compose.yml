@@ -16,6 +16,8 @@ services:
       APP_LOG_FORMAT: plain
       # No built-in default: export APP_ADMIN_PASSWORD to enable instructor login.
       APP_ADMIN_PASSWORD: "${APP_ADMIN_PASSWORD:-}"
+      # Set APP_LLM_MODE=hash for local pilots (deterministic hash classifier).
+      APP_LLM_MODE: "${APP_LLM_MODE:-}"
 
       # Database configuration
       APP_DB_HOST: postgres
