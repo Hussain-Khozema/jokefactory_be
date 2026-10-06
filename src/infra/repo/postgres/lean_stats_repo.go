@@ -124,18 +124,22 @@ profits AS (
 
 // batchSeriesSQL lists every submitted batch of round $1 (of team $2, or of
 // every team when $2 is 0) in submission order, with its joke rows, published
-// jokes and jokes ever sold (any +1 purchase event).
+// jokes and jokes ever sold (any +1 purchase event). One grouped pass: `sold`
+// is distinct per joke, so the LEFT JOINs never fan a joke out.
 const batchSeriesSQL = `
+WITH sold AS (
+	SELECT DISTINCT joke_id FROM purchase_events WHERE round_id = $1 AND delta > 0
+)
 SELECT b.team_id, b.submitted_at,
-       (SELECT COUNT(*) FROM jokes j WHERE j.batch_id = b.batch_id)::int AS jokes,
-       (SELECT COUNT(*) FROM jokes j
-         WHERE j.batch_id = b.batch_id AND j.publish_status = 'PUBLISHED')::int AS published,
-       (SELECT COUNT(DISTINCT pe.joke_id) FROM purchase_events pe
-         JOIN jokes j ON j.joke_id = pe.joke_id
-         WHERE j.batch_id = b.batch_id AND pe.round_id = $1 AND pe.delta > 0)::int AS sold
+       COUNT(j.joke_id)::int                                         AS jokes,
+       (COUNT(*) FILTER (WHERE j.publish_status = 'PUBLISHED'))::int AS published,
+       COUNT(s.joke_id)::int                                         AS sold
 FROM batches b
+LEFT JOIN jokes j ON j.batch_id = b.batch_id
+LEFT JOIN sold s  ON s.joke_id = j.joke_id
 WHERE b.round_id = $1 AND b.submitted_at IS NOT NULL
   AND ($2::bigint = 0 OR b.team_id = $2::bigint)
+GROUP BY b.batch_id
 ORDER BY b.team_id, b.submitted_at, b.batch_id`
 
 func (r *Repositories) GetRoundStatsLean(ctx context.Context, roundID int64) (*ports.RoundStats, error) {
@@ -267,7 +271,7 @@ func (r *Repositories) leanBatchSeries(ctx context.Context, roundID, teamID int6
 		if err := rows.Scan(&team, &at, &p.Jokes, &p.Published, &p.Sold); err != nil {
 			return nil, err
 		}
-		p.SubmittedAt = at
+		p.SubmittedAt = at.UTC()
 		p.Seq = len(out[team]) + 1
 		out[team] = append(out[team], p)
 	}

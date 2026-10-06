@@ -59,7 +59,11 @@ func (s *StatsService) GetTeamSummary(ctx context.Context, roundID, teamID int64
 // its existing errors) for unknown rounds.
 func (s *StatsService) isLean(ctx context.Context, roundID int64) bool {
 	round, err := s.repo.GetRoundByID(ctx, roundID)
-	return err == nil && round != nil && round.MarketMode.IsLean()
+	if err != nil {
+		s.log.Warn("load round for stats mode; using classic stats", "round_id", roundID, "error", err)
+		return false
+	}
+	return round != nil && round.MarketMode.IsLean()
 }
 
 // serveArrivals serves due Lean customers. ServeArrivals itself returns early

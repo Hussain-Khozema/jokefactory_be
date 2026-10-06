@@ -61,7 +61,9 @@ func (st *Store) leanStats(rd *domain.Round) map[int64]*ports.LeanTeamStats {
 			byTeam[b.TeamID] = a
 		}
 		a.batches = append(a.batches, b)
-		// Every stored batch was created by one submit (one +1 event).
+		// Counting submitted batches equals counting +1 batch_submission_events:
+		// CreateBatch is the only writer of batches and of +1 events (one each),
+		// and the -1 events written on processing are not submits.
 		a.stats.BatchesSubmitted++
 
 		// wip: jokes (batch_size when unsplit) × minutes submitted → processed/clock end.
@@ -111,7 +113,7 @@ func (st *Store) leanStats(rd *domain.Round) map[int64]*ports.LeanTeamStats {
 			return bi.ID < bj.ID
 		})
 		for i, b := range a.batches {
-			p := ports.BatchPoint{Seq: i + 1, SubmittedAt: *b.SubmittedAt, Jokes: len(b.Jokes)}
+			p := ports.BatchPoint{Seq: i + 1, SubmittedAt: b.SubmittedAt.UTC(), Jokes: len(b.Jokes)}
 			for _, j := range b.Jokes {
 				if j.PublishStatus == domain.PublishPublished {
 					p.Published++
