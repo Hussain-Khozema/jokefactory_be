@@ -57,3 +57,38 @@ func TestChooseBasketIsWithoutReplacementAndBounded(t *testing.T) {
 		t.Fatalf("empty candidates gave %d", n)
 	}
 }
+
+func TestChooseBasketNeverPicksTheSameTextTwice(t *testing.T) {
+	cands := []ports.CandidateJoke{
+		{JokeID: 1, TeamID: 1, TrueFit: 9, Text: "Why did the chicken cross the road?"},
+		{JokeID: 2, TeamID: 2, TrueFit: 9, Text: "Why did the chicken cross the road?"},
+		{JokeID: 3, TeamID: 1, TrueFit: 9, Text: "Knock knock."},
+	}
+	for seed := int64(0); seed < 200; seed++ {
+		got := chooseBasket(cands, 3, 2, rand.New(rand.NewSource(seed)))
+		if len(got) != 2 {
+			t.Fatalf("seed %d: basket %+v, want 2 jokes", seed, got)
+		}
+		if got[0].Text == got[1].Text {
+			t.Fatalf("seed %d: duplicate text in basket %+v", seed, got)
+		}
+	}
+	if cands[0].JokeID != 1 || cands[1].JokeID != 2 || cands[2].JokeID != 3 || len(cands) != 3 {
+		t.Fatalf("chooseBasket mutated its input: %+v", cands)
+	}
+}
+
+func TestChooseBasketNormalisesTextCaseAndWhitespace(t *testing.T) {
+	cands := []ports.CandidateJoke{
+		{JokeID: 1, TrueFit: 8, Text: "  Why did the   chicken\ncross?  "},
+		{JokeID: 2, TrueFit: 8, Text: "why DID the chicken cross?"},
+	}
+	for seed := int64(0); seed < 50; seed++ {
+		if got := chooseBasket(cands, 5, 2, rand.New(rand.NewSource(seed))); len(got) != 1 {
+			t.Fatalf("seed %d: basket %+v, want 1 joke", seed, got)
+		}
+	}
+	if normaliseJokeText("  A\t b\n\nC ") != "a b c" {
+		t.Fatalf("normaliseJokeText = %q", normaliseJokeText("  A\t b\n\nC "))
+	}
+}

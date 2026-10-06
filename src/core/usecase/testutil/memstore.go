@@ -1033,7 +1033,7 @@ func (st *Store) ListPublishedCandidates(_ context.Context, roundID int64) ([]po
 				continue
 			}
 			out = append(out, ports.CandidateJoke{
-				JokeID: j.ID, TeamID: b.TeamID, RoundID: b.RoundID, TrueFit: fit.TrueFit,
+				JokeID: j.ID, TeamID: b.TeamID, RoundID: b.RoundID, TrueFit: fit.TrueFit, Text: j.Text,
 			})
 		}
 	}

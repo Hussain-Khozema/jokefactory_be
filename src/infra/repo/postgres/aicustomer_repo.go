@@ -286,7 +286,7 @@ func (r *Repositories) ClaimDueCustomers(ctx context.Context, roundID int64, _ t
 // classified joke with its team and true fit.
 func (r *Repositories) ListPublishedCandidates(ctx context.Context, roundID int64) ([]ports.CandidateJoke, error) {
 	rows, err := r.pg.Pool.Query(ctx, `
-		SELECT j.joke_id, b.team_id, b.round_id, jf.true_fit
+		SELECT j.joke_id, b.team_id, b.round_id, jf.true_fit, j.joke_text
 		FROM jokes j
 		JOIN batches b ON b.batch_id = j.batch_id
 		JOIN joke_fit jf ON jf.joke_id = j.joke_id
@@ -298,7 +298,7 @@ func (r *Repositories) ListPublishedCandidates(ctx context.Context, roundID int6
 	var out []ports.CandidateJoke
 	for rows.Next() {
 		var c ports.CandidateJoke
-		if err := rows.Scan(&c.JokeID, &c.TeamID, &c.RoundID, &c.TrueFit); err != nil {
+		if err := rows.Scan(&c.JokeID, &c.TeamID, &c.RoundID, &c.TrueFit, &c.Text); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

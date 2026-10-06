@@ -270,6 +270,10 @@ type CandidateJoke struct {
 	TeamID  int64
 	RoundID int64
 	TrueFit float64
+	// Text is the joke text. Lean uses it to avoid selling a customer the
+	// same joke twice when a team publishes the same text more than once;
+	// Classic ignores it (ListCandidateJokes leaves it empty).
+	Text string
 }
 
 // MarketJoke is a published joke as shown on the market board.

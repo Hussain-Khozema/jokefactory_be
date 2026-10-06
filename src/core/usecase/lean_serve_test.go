@@ -217,3 +217,32 @@ func TestServeArrivalsSurvivesCancelledRequest(t *testing.T) {
 		t.Fatalf("purchases lost to cancellation: hi=%d lo=%d", soldCount(t, st, hi), soldCount(t, st, lo))
 	}
 }
+
+func TestServeArrivalsSellsACustomerOneCopyOfADuplicatedJoke(t *testing.T) {
+	st := testutil.NewStore()
+	round, hi, lo := leanRound(t, st)
+	// Team 1 re-publishes its strong joke (same text, different spacing/case).
+	const dup int64 = 102
+	title := "t"
+	st.Batches[1].Jokes = append(st.Batches[1].Jokes, domain.Joke{
+		ID: dup, BatchID: 1, Text: "  STRONG ", Title: &title, PublishStatus: domain.PublishPublished,
+	})
+	st.JokeFits[dup] = &domain.JokeFit{JokeID: dup, RoundID: 1, TrueFit: 11}
+	svc := NewAICustomerService(st, rand.New(rand.NewSource(1)), slog.Default())
+	if err := svc.GenerateCustomers(context.Background(), round); err != nil {
+		t.Fatal(err)
+	}
+	_ = svc.ServeArrivals(context.Background(), round.ID, round.StartedAt.Add(time.Hour))
+	copies := soldCount(t, st, hi) + soldCount(t, st, dup)
+	if copies != 10 {
+		t.Fatalf("copies of the duplicated joke sold %d times across 10 customers, want exactly 10 (one each)", copies)
+	}
+	if soldCount(t, st, lo) != 10 {
+		t.Fatalf("fit-7 joke sold %d", soldCount(t, st, lo))
+	}
+	for _, c := range mustList(t, st, round.ID) {
+		if c.RemainingBudget != 1 { // budget 3: one copy of "strong" + "fair"
+			t.Fatalf("customer %d budget %.2f, want 1", c.ID, c.RemainingBudget)
+		}
+	}
+}
