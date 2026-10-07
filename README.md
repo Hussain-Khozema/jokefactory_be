@@ -131,11 +131,11 @@ make migrate-status
 To wipe and recreate locally: drop/recreate the DB (or `make migrate-down`), then `migrate-up` again.
 ## Local run with the hash classifier
 
-For pilots and smoke tests without Azure OpenAI keys, set `APP_LLM_MODE=hash` to use the deterministic hash classifier (default without LLM keys is the stub classifier).
+For pilots and smoke tests without Azure OpenAI keys, set `APP_LLM_MODE=hash` **and** `APP_LLM_HASH_CONFIRM=local-pilot-only` to use the deterministic hash classifier (default without LLM keys is the stub classifier). The hash classifier does not grade jokes with the LLM, so it is never for production: the server refuses to start with `APP_LLM_MODE=hash` unless the confirmation is also set, refuses any `APP_LLM_MODE` other than unset or `hash`, and logs a warning at startup whenever hash mode is on.
 
 ```bash
 export APP_ADMIN_PASSWORD=...   # pick a local value; never commit it
-APP_LLM_MODE=hash docker compose up -d --build
+APP_LLM_MODE=hash APP_LLM_HASH_CONFIRM=local-pilot-only docker compose up -d --build
 make migrate-up                 # goose; DB_DSN defaults to localhost:5432
 curl -s localhost:8081/health
 ```

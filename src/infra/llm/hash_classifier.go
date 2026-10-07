@@ -38,7 +38,8 @@ const (
 // Fit has no ideal and is graded intrinsically.
 const titleFitGood = "Perfect"
 
-// HashClassifier is for LOCAL PILOTS ONLY (APP_LLM_MODE=hash). It knows nothing
+// HashClassifier is for LOCAL PILOTS ONLY (APP_LLM_MODE=hash plus
+// APP_LLM_HASH_CONFIRM=local-pilot-only). It knows nothing
 // about humour. Each joke gets a hidden "quality" q derived from a hash of its
 // text; for every LLM dimension, a second hash of text|dimension decides with
 // probability q whether the joke lands on PilotIdeal's category (Perfect for

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -57,7 +58,16 @@ func run() error {
 
 	gameRepo := postgres.New(pg, log)
 
-	classifier, modelName := buildClassifier(cfg)
+	classifier, modelName, err := buildClassifier(cfg.LLM)
+	if err != nil {
+		return err
+	}
+	if modelName == "hash" {
+		log.Warn("HASH CLASSIFIER ACTIVE: jokes are NOT graded by the LLM; scores are a deterministic hash. Local pilots only, never production.",
+			"APP_LLM_MODE", cfg.LLM.Mode,
+			"fix", "unset APP_LLM_MODE and APP_LLM_HASH_CONFIRM to grade with the LLM",
+		)
+	}
 	log.Info("classifier selected", "classifier", modelName)
 	aiCustomers := usecase.NewAICustomerService(gameRepo, nil, log)
 	classSvc := usecase.NewClassificationService(gameRepo, classifier, aiCustomers, modelName, log)
@@ -85,12 +95,25 @@ func dispatcherConfig(cfg *config.Config) worker.DispatcherConfig {
 	}
 }
 
-func buildClassifier(cfg *config.Config) (c ports.Classifier, model string) {
-	if cfg.LLM.Mode == "hash" {
-		return llm.HashClassifier{}, "hash"
+// buildClassifier picks the classifier from the LLM settings. Hash mode needs
+// both APP_LLM_MODE=hash and APP_LLM_HASH_CONFIRM=local-pilot-only, and an
+// unknown mode is an error, so a typo or a single stray variable can never
+// silently swap LLM grading for the hash classifier.
+func buildClassifier(cfg config.LLMConfig) (c ports.Classifier, model string, err error) {
+	switch cfg.Mode {
+	case "":
+	case "hash":
+		if cfg.HashConfirm != config.HashConfirmValue {
+			return nil, "", fmt.Errorf(
+				"APP_LLM_MODE=hash grades jokes with a hash, not the LLM: set APP_LLM_HASH_CONFIRM=%s to confirm this is a local pilot, or unset APP_LLM_MODE",
+				config.HashConfirmValue)
+		}
+		return llm.HashClassifier{}, "hash", nil
+	default:
+		return nil, "", fmt.Errorf("APP_LLM_MODE=%q is not supported: leave it unset, or use \"hash\" for local pilots", cfg.Mode)
 	}
-	if cfg.LLM.Enabled() {
-		return llm.NewAzureClassifier(cfg.LLM), cfg.LLM.Deployment
+	if cfg.Enabled() {
+		return llm.NewAzureClassifier(cfg), cfg.Deployment, nil
 	}
-	return llm.StubClassifier{}, "stub"
+	return llm.StubClassifier{}, "stub", nil
 }
