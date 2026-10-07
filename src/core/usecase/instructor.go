@@ -346,7 +346,21 @@ func (s *InstructorService) EndRound(ctx context.Context, roundID int64) (*domai
 	if round.Status != domain.RoundActive {
 		return nil, domain.NewConflictError("round not active")
 	}
+	s.serveArrivalsBeforeEnd(ctx, round)
 	return s.repo.EndRound(ctx, roundID)
+}
+
+// serveArrivalsBeforeEnd lets Lean customers who arrived since the last poll
+// shop before the round ends; once it is ENDED, ServeArrivals is a no-op and
+// they would never be served. A failure is logged and never blocks ending the
+// round. CLASSIC rounds skip this entirely.
+func (s *InstructorService) serveArrivalsBeforeEnd(ctx context.Context, round *domain.Round) {
+	if s.aiCustomers == nil || !round.MarketMode.IsLean() {
+		return
+	}
+	if err := s.aiCustomers.ServeArrivals(ctx, round.ID, time.Now().UTC()); err != nil {
+		s.log.Error("serve arrivals before end round", "round_id", round.ID, "error", err)
+	}
 }
 
 func (s *InstructorService) SetPopupState(ctx context.Context, roundID int64, isActive bool) (*domain.Round, error) {

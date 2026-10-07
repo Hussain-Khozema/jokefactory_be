@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math/rand"
 	"strings"
@@ -236,5 +237,68 @@ func TestStatsReadWithoutArrivalsServesNothing(t *testing.T) {
 	}
 	if n := countServed(t, st, round.ID); n != 0 {
 		t.Fatalf("served %d without an arrivals server", n)
+	}
+}
+
+// failingClaimStore fails ClaimDueCustomers and counts the calls.
+type failingClaimStore struct {
+	*testutil.Store
+	claims *int
+}
+
+func (s failingClaimStore) ClaimDueCustomers(context.Context, int64, time.Time) ([]domain.AICustomer, error) {
+	*s.claims++
+	return nil, errors.New("claim failed")
+}
+
+// Customers who arrived after the last poll must still shop before the round
+// ends: ServeArrivals is a no-op once the round is ENDED.
+func TestEndRoundServesDueArrivalsFirst(t *testing.T) {
+	st := testutil.NewStore()
+	round, svc, _ := leanRoundAllDue(t, st)
+	is := NewInstructorService(st, svc, slog.Default())
+	ended, err := is.EndRound(context.Background(), round.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ended.Status != domain.RoundEnded {
+		t.Fatalf("status = %s, want ENDED", ended.Status)
+	}
+	if n := countServed(t, st, round.ID); n != 10 {
+		t.Fatalf("end round served %d of 10", n)
+	}
+}
+
+func TestEndRoundEndsEvenWhenServingFails(t *testing.T) {
+	st := testutil.NewStore()
+	round, _, _ := leanRoundAllDue(t, st)
+	claims := 0
+	fs := failingClaimStore{Store: st, claims: &claims}
+	svc := NewAICustomerService(fs, rand.New(rand.NewSource(1)), slog.Default())
+	is := NewInstructorService(fs, svc, slog.Default())
+	ended, err := is.EndRound(context.Background(), round.ID)
+	if err != nil {
+		t.Fatalf("a failed serve blocked end round: %v", err)
+	}
+	if ended.Status != domain.RoundEnded || claims != 1 {
+		t.Fatalf("status=%s claims=%d, want ENDED after one serve attempt", ended.Status, claims)
+	}
+}
+
+func TestEndRoundDoesNotServeInClassic(t *testing.T) {
+	st := testutil.NewStore()
+	round, _, _ := leanRoundAllDue(t, st)
+	round.MarketMode = domain.MarketClassic
+	st.Rounds[round.ID] = round
+	claims := 0
+	fs := failingClaimStore{Store: st, claims: &claims}
+	svc := NewAICustomerService(fs, rand.New(rand.NewSource(1)), slog.Default())
+	is := NewInstructorService(fs, svc, slog.Default())
+	ended, err := is.EndRound(context.Background(), round.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ended.Status != domain.RoundEnded || claims != 0 || countServed(t, st, round.ID) != 0 {
+		t.Fatalf("classic end round: status=%s claims=%d served=%d", ended.Status, claims, countServed(t, st, round.ID))
 	}
 }
