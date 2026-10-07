@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"jokefactory/src/core/domain"
@@ -160,5 +161,124 @@ func TestConfigLocksMarketModeOnceStarted(t *testing.T) {
 	}
 	if rd.MarketMode != domain.MarketLean || rd.MarketPrice != 2 {
 		t.Fatalf("rejected config was written: %+v", rd)
+	}
+}
+
+// startedLeanRound configures round 1 as LEAN with non-default lean settings
+// and starts it, returning the config it was started with.
+func startedLeanRound(t *testing.T, svc *usecase.InstructorService) domain.RoundConfig {
+	t.Helper()
+	ctx := context.Background()
+	cfg := domain.DefaultRoundConfig()
+	cfg.MarketMode = domain.MarketLean
+	cfg.ArrivalWindowSeconds = 300
+	cfg.SetupCostPerBatch = 3
+	cfg.CarryingCostPerJokeMinute = 0.02
+	cfg.WIPLimit = 2
+	cfg.PreferenceBase = 3
+	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.StartRound(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestConfigLocksLeanSettingsOnceStarted(t *testing.T) {
+	for name, mutate := range map[string]func(*domain.RoundConfig){
+		"window":   func(c *domain.RoundConfig) { c.ArrivalWindowSeconds = 600 },
+		"setup":    func(c *domain.RoundConfig) { c.SetupCostPerBatch = 5 },
+		"carrying": func(c *domain.RoundConfig) { c.CarryingCostPerJokeMinute = 0.05 },
+		"wip":      func(c *domain.RoundConfig) { c.WIPLimit = 0 },
+		"base":     func(c *domain.RoundConfig) { c.PreferenceBase = 2 },
+	} {
+		_, svc := newLeanConfigInstructor()
+		cfg := startedLeanRound(t, svc)
+		mutate(&cfg)
+		_, err := svc.Config(context.Background(), 1, &cfg, nil)
+		var de *domain.DomainError
+		if !domain.IsConflict(err) || !errors.As(err, &de) || !strings.Contains(de.Message, "MARKET_MODE_LOCKED") {
+			t.Fatalf("%s change on ACTIVE lean round: want MARKET_MODE_LOCKED conflict, got %v", name, err)
+		}
+		rd, err := svc.GetRound(context.Background(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rd.SetupCostPerBatch != 3 || rd.ArrivalWindowSeconds != 300 || rd.CarryingCostPerJokeMinute != 0.02 ||
+			rd.WIPLimit != 2 || rd.PreferenceBase != 3 {
+			t.Fatalf("%s: rejected config was written: %+v", name, rd)
+		}
+	}
+}
+
+func TestConfigLocksLeanSettingsOnEndedRound(t *testing.T) {
+	_, svc := newLeanConfigInstructor()
+	cfg := startedLeanRound(t, svc)
+	if _, err := svc.EndRound(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SetupCostPerBatch = 9
+	if _, err := svc.Config(context.Background(), 1, &cfg, nil); !domain.IsConflict(err) {
+		t.Fatalf("setup change on ENDED lean round: want conflict, got %v", err)
+	}
+}
+
+func TestConfigAllowsResendingSameLeanSettingsOnceStarted(t *testing.T) {
+	_, svc := newLeanConfigInstructor()
+	cfg := startedLeanRound(t, svc)
+	// A float that rounds to the stored cents is the same value.
+	cfg.CarryingCostPerJokeMinute = 0.020000001
+	cfg.MarketPrice = 7
+	if _, err := svc.Config(context.Background(), 1, &cfg, nil); err != nil {
+		t.Fatalf("resending same lean settings on ACTIVE round: %v", err)
+	}
+	rd, err := svc.GetRound(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rd.MarketPrice != 7 {
+		t.Fatalf("price change not written: %+v", rd)
+	}
+}
+
+func TestConfigAllowsLeanSettingChangesBeforeStart(t *testing.T) {
+	_, svc := newLeanConfigInstructor()
+	ctx := context.Background()
+	cfg := domain.DefaultRoundConfig()
+	cfg.MarketMode = domain.MarketLean
+	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SetupCostPerBatch = 4
+	if _, err := svc.Config(ctx, 1, &cfg, nil); err != nil {
+		t.Fatalf("setup change on CONFIGURED round: %v", err)
+	}
+}
+
+// Classic rounds must keep accepting mid-round price and cost changes.
+func TestConfigAllowsClassicPriceChangeOnceStarted(t *testing.T) {
+	_, svc := newLeanConfigInstructor()
+	ctx := context.Background()
+	cfg := domain.DefaultRoundConfig()
+	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.StartRound(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	cfg.MarketPrice = 4
+	cfg.CostOfPublishing = 1.5
+	cfg.CostOfDiscard = 0.5
+	cfg.CustomerBudget = 20
+	if _, err := svc.Config(ctx, 1, &cfg, nil); err != nil {
+		t.Fatalf("price change on ACTIVE classic round: %v", err)
+	}
+	rd, err := svc.GetRound(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rd.MarketPrice != 4 || rd.CostOfPublishing != 1.5 || rd.CostOfDiscard != 0.5 || rd.CustomerBudget != 20 {
+		t.Fatalf("classic config change not written: %+v", rd)
 	}
 }

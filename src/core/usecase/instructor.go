@@ -56,7 +56,7 @@ func (s *InstructorService) Config(ctx context.Context, roundID int64, cfg *doma
 			return nil, err
 		}
 	}
-	if err := s.checkMarketModeLock(ctx, roundID, cfg.MarketMode); err != nil {
+	if err := s.checkStartedRoundLock(ctx, roundID, cfg); err != nil {
 		return nil, err
 	}
 
@@ -81,11 +81,15 @@ func (s *InstructorService) Config(ctx context.Context, roundID int64, cfg *doma
 	return &ConfigResult{Round: round, IdealProfile: storedProfile}, nil
 }
 
-// checkMarketModeLock refuses to change market_mode once a round has left
-// CONFIGURED. Lean customers get arrival times only in StartRound, so a
-// switch mid-round would strand them (to LEAN) or make them all shop at once
-// (to CLASSIC). Other fields, and re-sending the same mode, are unaffected.
-func (s *InstructorService) checkMarketModeLock(ctx context.Context, roundID int64, mode domain.MarketMode) error {
+// checkStartedRoundLock refuses, once a round has left CONFIGURED, to change
+// market_mode or (for a LEAN round) any lean setting. Lean customers get
+// arrival times only in StartRound, so a mode switch mid-round would strand
+// them (to LEAN) or make them all shop at once (to CLASSIC); and lean setup
+// and carrying costs are read at stats time, so changing them later would
+// rewrite the round's past profits. Re-sending the stored values, and every
+// other field (price, costs, budget, ...), are unaffected. Lean settings on a
+// CLASSIC round are ignored by the market, so they are not locked there.
+func (s *InstructorService) checkStartedRoundLock(ctx context.Context, roundID int64, cfg *domain.RoundConfig) error {
 	existing, err := s.repo.GetRoundByID(ctx, roundID)
 	if err != nil {
 		if domain.IsNotFound(err) {
@@ -97,10 +101,32 @@ func (s *InstructorService) checkMarketModeLock(ctx context.Context, roundID int
 		return nil
 	}
 	stored, err := domain.ParseMarketMode(string(existing.MarketMode))
-	if err != nil || stored != mode {
-		return domain.NewConflictError("MARKET_MODE_LOCKED: market mode can only change before the round starts")
+	if err != nil || stored != cfg.MarketMode {
+		return errStartedRoundLocked()
+	}
+	if stored == domain.MarketLean && leanSettingsChanged(existing, cfg) {
+		return errStartedRoundLocked()
 	}
 	return nil
+}
+
+func errStartedRoundLocked() error {
+	return domain.NewConflictError("MARKET_MODE_LOCKED: market mode and lean settings can only change before the round starts")
+}
+
+// leanSettingsChanged compares at the scale Postgres stores each column
+// (setup cost and preference base NUMERIC(_,2), carrying cost NUMERIC(_,4)),
+// so a value that round-trips through the database counts as unchanged.
+func leanSettingsChanged(r *domain.Round, cfg *domain.RoundConfig) bool {
+	return r.ArrivalWindowSeconds != cfg.ArrivalWindowSeconds ||
+		r.WIPLimit != cfg.WIPLimit ||
+		!sameAtScale(r.SetupCostPerBatch, cfg.SetupCostPerBatch, 100) ||
+		!sameAtScale(r.CarryingCostPerJokeMinute, cfg.CarryingCostPerJokeMinute, 10000) ||
+		!sameAtScale(r.PreferenceBase, cfg.PreferenceBase, 100)
+}
+
+func sameAtScale(a, b, scale float64) bool {
+	return math.Round(a*scale) == math.Round(b*scale)
 }
 
 func validateRoundConfig(cfg *domain.RoundConfig) error {
