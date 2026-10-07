@@ -126,6 +126,49 @@ type RoundStats struct {
 	Leaderboard []TeamStats `json:"leaderboard"`
 }
 
+// LeanChartTeamRow is one team of a round (a team_rounds_state row) with the
+// per-team totals the lean charts read from leanTeamCTE. WIPJokeMinutes and
+// InventoryJokeMinutes are the two halves of the Lean carrying cost.
+type LeanChartTeamRow struct {
+	TeamID               int64
+	TeamName             string
+	BatchesSubmitted     int
+	DiscardedJokes       int
+	WIPJokeMinutes       float64
+	InventoryJokeMinutes float64
+}
+
+// LeanChartBatchRow is one submitted batch of the round. JokeRows is 0 for a
+// batch Marketing has not split yet. Sold counts its jokes with any +1
+// purchase event; FirstSoldAt is the earliest of those events (nil: none).
+type LeanChartBatchRow struct {
+	BatchID     int64
+	TeamID      int64
+	SubmittedAt time.Time
+	ProcessedAt *time.Time
+	JokeRows    int
+	Published   int
+	Sold        int
+	FirstSoldAt *time.Time
+}
+
+// LeanChartJokeRow is one PUBLISHED joke of the round with its first sale.
+type LeanChartJokeRow struct {
+	TeamID      int64
+	PublishedAt time.Time
+	FirstSoldAt *time.Time
+}
+
+// LeanChartRows is everything the lean charts are built from, read in one
+// snapshot. ClockEnd is the round's ended_at, or the database's now() while it
+// runs — the instant the Lean costs stop at.
+type LeanChartRows struct {
+	ClockEnd time.Time
+	Teams    []LeanChartTeamRow
+	Batches  []LeanChartBatchRow
+	Jokes    []LeanChartJokeRow
+}
+
 type UserRepository interface {
 	CreateUser(ctx context.Context, displayName string) (*domain.User, error)
 	GetUserByDisplayName(ctx context.Context, displayName string) (*domain.User, error)
@@ -222,6 +265,9 @@ type StatsRepository interface {
 	// them into profit. The Classic queries above are not touched.
 	GetRoundStatsLean(ctx context.Context, roundID int64) (*RoundStats, error)
 	GetTeamSummaryLean(ctx context.Context, roundID, teamID int64) (*TeamSummary, error)
+	// GetLeanChartRows reads the raw rows the lean charts are built from, in
+	// one read-only snapshot. An unknown round is a not-found error.
+	GetLeanChartRows(ctx context.Context, roundID int64) (*LeanChartRows, error)
 }
 
 // MaxClassificationAttempts is the job-level retry ceiling before FAILED sticks.

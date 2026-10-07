@@ -28,7 +28,9 @@ import (
 //	            or clock_end); discarded jokes never carry; plus the mean
 //	            publish → first sale seconds of sold jokes
 //	lean        setup_cost = batches_submitted × setup_cost_per_batch,
-//	            carrying_cost = carrying_cost_per_joke_minute × (wip + inventory)
+//	            carrying_cost = carrying_cost_per_joke_minute × (wip + inventory),
+//	            and wip_joke_minutes / inventory_joke_minutes, the two halves
+//	            the lean charts show separately
 //	profits     Classic profit − setup_cost − carrying_cost
 const leanTeamCTE = `
 WITH cfg AS (
@@ -91,6 +93,8 @@ lean AS (
 	       COALESCE(s.batches_submitted, 0) * c.setup_cost_per_batch AS setup_cost,
 	       c.carrying_cost_per_joke_minute
 	         * (COALESCE(w.wip_joke_minutes, 0) + COALESCE(i.inventory_joke_minutes, 0)) AS carrying_cost,
+	       COALESCE(w.wip_joke_minutes, 0)            AS wip_joke_minutes,
+	       COALESCE(i.inventory_joke_minutes, 0)      AS inventory_joke_minutes,
 	       COALESCE(w.avg_submit_to_publish_s, 0)     AS avg_submit_to_publish_s,
 	       COALESCE(i.avg_publish_to_first_sale_s, 0) AS avg_publish_to_first_sale_s
 	FROM team_rounds_state trs
@@ -115,6 +119,7 @@ profits AS (
 	         - (SELECT cost_of_discard FROM cfg) * trs.discarded_jokes::float8
 	         - l.setup_cost - l.carrying_cost AS profit,
 	       l.batches_submitted, l.setup_cost, l.carrying_cost,
+	       l.wip_joke_minutes, l.inventory_joke_minutes,
 	       l.avg_submit_to_publish_s, l.avg_publish_to_first_sale_s
 	FROM team_rounds_state trs
 	JOIN teams t ON t.id = trs.team_id
