@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"jokefactory/src/core/domain"
 	"jokefactory/src/core/ports"
 )
 
@@ -76,6 +77,79 @@ func (s *StatsService) serveArrivals(ctx context.Context, roundID int64) {
 	if err := s.arrivals.ServeArrivals(ctx, roundID, time.Now().UTC()); err != nil {
 		s.log.Error("serve arrivals on stats read", "round_id", roundID, "error", err)
 	}
+}
+
+// notLeanRoundCode starts the 409 message for lean charts of a CLASSIC round;
+// the frontend matches on it (services/leanCharts.ts isNotLeanRound), as it
+// does for MARKET_MODE_LOCKED and WIP_LIMIT_REACHED.
+const notLeanRoundCode = "NOT_LEAN_ROUND"
+
+func errNotLeanRound() error {
+	return domain.NewConflictError(notLeanRoundCode + ": lean charts exist only for LEAN rounds")
+}
+
+// GetLeanCharts returns the lean charts of a LEAN round for every team. A
+// CLASSIC round is a NOT_LEAN_ROUND conflict (409) and an unknown round a
+// not-found error (404). Due Lean customers are served first, as on every
+// stats read, so the charts agree with the leaderboard.
+func (s *StatsService) GetLeanCharts(ctx context.Context, roundID int64) (*LeanCharts, error) {
+	round, err := s.leanRound(ctx, roundID)
+	if err != nil {
+		return nil, err
+	}
+	s.serveArrivals(ctx, roundID)
+	rows, err := s.repo.GetLeanChartRows(ctx, roundID)
+	if err != nil {
+		return nil, err
+	}
+	charts := BuildLeanCharts(round, rows)
+	return &charts, nil
+}
+
+// GetTeamLeanCharts is GetLeanCharts for one team's screen: that team's row
+// and the class average, never another team's row. A team with no row in the
+// round yet gets an all-zero row; an unknown team is a not-found error.
+func (s *StatsService) GetTeamLeanCharts(ctx context.Context, roundID, teamID int64) (*LeanCharts, error) {
+	charts, err := s.GetLeanCharts(ctx, roundID)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range charts.Teams {
+		if t.TeamID == teamID {
+			charts.Teams = []LeanChartsTeam{t}
+			return charts, nil
+		}
+	}
+	team, err := s.repo.GetTeam(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	zero := LeanChartsTeam{
+		TeamID: team.ID, TeamName: team.Name,
+		Idle:    make([]IdleSample, 0, len(charts.ClassAverage.Idle)),
+		Batches: []LeanChartsBatch{},
+	}
+	for _, a := range charts.ClassAverage.Idle {
+		zero.Idle = append(zero.Idle, IdleSample{T: a.T})
+	}
+	charts.Teams = []LeanChartsTeam{zero}
+	return charts, nil
+}
+
+// leanRound loads a round for the lean charts: not-found passes through, a
+// CLASSIC round is a NOT_LEAN_ROUND conflict.
+func (s *StatsService) leanRound(ctx context.Context, roundID int64) (*domain.Round, error) {
+	round, err := s.repo.GetRoundByID(ctx, roundID)
+	if err != nil {
+		return nil, err
+	}
+	if round == nil {
+		return nil, domain.NewNotFoundError("round")
+	}
+	if !round.MarketMode.IsLean() {
+		return nil, errNotLeanRound()
+	}
+	return round, nil
 }
 
 // arrivalServer converts a possibly-nil *AICustomerService into an

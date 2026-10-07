@@ -34,6 +34,11 @@ func (s *RoundService) TeamSummary(ctx context.Context, roundID, teamID int64) (
 	return s.stats.GetTeamSummary(ctx, roundID, teamID)
 }
 
+// TeamLeanCharts returns one team's lean charts plus the class average.
+func (s *RoundService) TeamLeanCharts(ctx context.Context, roundID, teamID int64) (*LeanCharts, error) {
+	return s.stats.GetTeamLeanCharts(ctx, roundID, teamID)
+}
+
 // NewRoundServiceWithArrivals is NewRoundService whose team summary also
 // serves due Lean customers. aiCustomers may be nil.
 func NewRoundServiceWithArrivals(repo ports.Store, aiCustomers *AICustomerService, log *slog.Logger) *RoundService {

@@ -371,6 +371,11 @@ func (s *InstructorService) Stats(ctx context.Context, roundID int64) (*ports.Ro
 	return s.stats.GetRoundStats(ctx, roundID)
 }
 
+// LeanCharts returns the lean charts of a LEAN round, every team.
+func (s *InstructorService) LeanCharts(ctx context.Context, roundID int64) (*LeanCharts, error) {
+	return s.stats.GetLeanCharts(ctx, roundID)
+}
+
 func (s *InstructorService) DeleteUser(ctx context.Context, roundID, userID int64) error {
 	_ = roundID
 	return s.repo.DeleteUser(ctx, userID)

@@ -284,6 +284,24 @@ func (h *InstructorHandler) Stats(c *gin.Context) {
 	})
 }
 
+// LeanCharts serves GET /v1/instructor/rounds/:round_id/lean-charts: every
+// team's lean charts and the class average. 409 NOT_LEAN_ROUND for a CLASSIC
+// round, 404 for an unknown one.
+func (h *InstructorHandler) LeanCharts(c *gin.Context) {
+	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
+		return
+	}
+	charts, err := h.instructorService.LeanCharts(c.Request.Context(), roundID)
+	if err != nil {
+		_ = c.Error(err)
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+	response.OK(c, charts)
+}
+
 // DeleteUser removes a non-instructor user from the round and database.
 func (h *InstructorHandler) DeleteUser(c *gin.Context) {
 	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)

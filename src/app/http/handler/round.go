@@ -81,3 +81,27 @@ func (h *RoundHandler) TeamSummary(c *gin.Context) {
 	}
 	response.OK(c, body)
 }
+
+// TeamLeanCharts serves GET /v1/rounds/:round_id/teams/:team_id/lean-charts:
+// that team's lean charts and the anonymous class average, never another
+// team's rows. Same access as TeamSummary. 409 NOT_LEAN_ROUND for a CLASSIC
+// round; 404 for an unknown round or team.
+func (h *RoundHandler) TeamLeanCharts(c *gin.Context) {
+	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
+		return
+	}
+	teamID, err := strconv.ParseInt(c.Param("team_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid team id", middleware.GetRequestID(c))
+		return
+	}
+	charts, err := h.roundService.TeamLeanCharts(c.Request.Context(), roundID, teamID)
+	if err != nil {
+		_ = c.Error(err)
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+	response.OK(c, charts)
+}

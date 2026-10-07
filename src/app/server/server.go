@@ -130,6 +130,7 @@ func (s *Server) setupRoutes() {
 		// Rounds
 		v1.GET("/rounds/active", s.roundHandler.Active)
 		v1.GET("/rounds/:round_id/teams/:team_id/summary", s.roundHandler.TeamSummary)
+		v1.GET("/rounds/:round_id/teams/:team_id/lean-charts", s.roundHandler.TeamLeanCharts)
 		v1.GET("/rounds/:round_id/teams/:team_id/feedback", s.feedbackHandler.Get)
 
 		// JM batches
@@ -161,6 +162,7 @@ func (s *Server) setupRoutes() {
 		instructor.POST("/instructor/rounds/:round_id/end", s.instructorHandler.EndRound)
 		instructor.POST("/instructor/rounds/:round_id/popups", s.instructorHandler.SetPopupState)
 		instructor.GET("/instructor/rounds/:round_id/stats", s.instructorHandler.Stats)
+		instructor.GET("/instructor/rounds/:round_id/lean-charts", s.instructorHandler.LeanCharts)
 	}
 
 	// Handle 404
