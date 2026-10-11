@@ -179,6 +179,7 @@ func (r *Repositories) PublishBatch(
 	batchID, marketerID, teamID int64,
 	decisions []ports.JokePublishDecision,
 	requireAtLeastOnePublished bool,
+	note *string,
 ) (*ports.PublishResult, error) {
 	var result *ports.PublishResult
 	err := r.pg.WithTx(ctx, func(tx pgx.Tx) error {
@@ -193,7 +194,7 @@ func (r *Repositories) PublishBatch(
 		if err != nil {
 			return err
 		}
-		processed, err := markBatchProcessed(ctx, tx, batchID)
+		processed, err := markBatchProcessed(ctx, tx, batchID, note)
 		if err != nil {
 			return err
 		}
@@ -302,15 +303,18 @@ func applyPublishDecisions(
 	return published, discarded, nil
 }
 
-func markBatchProcessed(ctx context.Context, tx pgx.Tx, batchID int64) (*domain.Batch, error) {
+// markBatchProcessed closes the batch and stores Marketing's note with it, in
+// the caller's transaction, so a note can never outlive a rolled-back publish.
+func markBatchProcessed(ctx context.Context, tx pgx.Tx, batchID int64, note *string) (*domain.Batch, error) {
 	return scanBatch(tx.QueryRow(ctx, `
 		UPDATE batches
 		SET status = 'PROCESSED',
 		    processed_at = now(),
 		    locked_by = NULL,
-		    locked_at = NULL
+		    locked_at = NULL,
+		    marketing_note = $2
 		WHERE batch_id = $1
-		RETURNING `+batchColumns, batchID))
+		RETURNING `+batchColumns, batchID, note))
 }
 
 func bumpTeamPublishCounters(ctx context.Context, tx pgx.Tx, batch *domain.Batch, published, discarded, jokeCount int) error {

@@ -45,8 +45,11 @@ type BatchSplitRequest struct {
 }
 
 // PublishRequest is the payload for POST /marketing/batches/{id}/publish.
+// Note is Marketing's optional note to the Joke Maker; absent, null or blank
+// stores NULL (see usecase.NormalizeMarketingNote).
 type PublishRequest struct {
 	Jokes []PublishJokeDecision `json:"jokes" binding:"required"`
+	Note  *string               `json:"note"`
 }
 
 // FeedbackJoke is one curated joke entry on GET .../feedback.

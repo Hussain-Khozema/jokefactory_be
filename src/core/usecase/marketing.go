@@ -5,10 +5,34 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"jokefactory/src/core/domain"
 	"jokefactory/src/core/ports"
 )
+
+// MaxMarketingNoteRunes caps Marketing's note to the Joke Maker, counted in
+// runes (not bytes) after trimming, so an emoji counts once.
+const MaxMarketingNoteRunes = 500
+
+// NormalizeMarketingNote turns the optional note from the publish request into
+// what is stored: nil (SQL NULL) when the field is absent or blank after
+// trimming, otherwise the trimmed text. NUL characters are dropped first,
+// because Postgres TEXT cannot store them. A note longer than
+// MaxMarketingNoteRunes is a validation error on field "note".
+func NormalizeMarketingNote(note *string) (*string, error) {
+	if note == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(strings.ReplaceAll(*note, "\x00", ""))
+	if trimmed == "" {
+		return nil, nil
+	}
+	if utf8.RuneCountInString(trimmed) > MaxMarketingNoteRunes {
+		return nil, domain.NewValidationError("note", fmt.Sprintf("must be at most %d characters", MaxMarketingNoteRunes))
+	}
+	return &trimmed, nil
+}
 
 // MarketingService handles Marketing queue claim and publish/discard.
 type MarketingService struct {
@@ -176,11 +200,25 @@ func (s *MarketingService) queueItem(
 	return &MarketingQueueItem{Batch: bwj.Batch, Jokes: bwj.Jokes, QueueSize: count}, nil
 }
 
-// Publish titles jokes and publishes/discards them for a claimed batch.
+// Publish titles jokes and publishes/discards them for a claimed batch, with no
+// note to the Joke Maker. Kept for callers that never send one.
 func (s *MarketingService) Publish(
 	ctx context.Context,
 	userID, batchID int64,
 	decisions []ports.JokePublishDecision,
+) (*ports.PublishResult, error) {
+	return s.PublishWithNote(ctx, userID, batchID, decisions, nil)
+}
+
+// PublishWithNote is Publish plus Marketing's optional note to the Joke Maker.
+// The note is normalised by NormalizeMarketingNote and stored in the same
+// transaction that processes the batch, for a release and for a whole-batch
+// discard alike.
+func (s *MarketingService) PublishWithNote(
+	ctx context.Context,
+	userID, batchID int64,
+	decisions []ports.JokePublishDecision,
+	note *string,
 ) (*ports.PublishResult, error) {
 	user, err := s.requireMarketer(ctx, userID)
 	if err != nil {
@@ -188,6 +226,10 @@ func (s *MarketingService) Publish(
 	}
 	if len(decisions) == 0 {
 		return nil, domain.NewValidationError("jokes", "at least one joke decision required")
+	}
+	storedNote, err := NormalizeMarketingNote(note)
+	if err != nil {
+		return nil, err
 	}
 
 	existing, err := s.repo.GetBatchWithJokes(ctx, batchID)
@@ -217,7 +259,7 @@ func (s *MarketingService) Publish(
 	// so it is decided here and handed to the repository as a flag.
 	requireAtLeastOnePublished := round.RoundNumber == 1
 
-	result, err := s.repo.PublishBatch(ctx, batchID, user.ID, *user.TeamID, normalized, requireAtLeastOnePublished)
+	result, err := s.repo.PublishBatch(ctx, batchID, user.ID, *user.TeamID, normalized, requireAtLeastOnePublished, storedNote)
 	if err != nil {
 		return nil, err
 	}

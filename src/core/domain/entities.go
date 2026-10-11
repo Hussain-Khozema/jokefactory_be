@@ -76,6 +76,10 @@ type Batch struct {
 	RawText *string
 	// RawTextOriginal is the immutable copy set at submit, so unsplit is lossless.
 	RawTextOriginal *string
+	// MarketingNote is Marketing's note to the Joke Maker, written once when the
+	// batch is published (released or discarded as a whole). Nil when Marketing
+	// wrote nothing, and on batches published before migration 0004.
+	MarketingNote *string
 }
 
 type Joke struct {

@@ -554,6 +554,7 @@ func (st *Store) PublishBatch(
 	batchID, marketerID, teamID int64,
 	decisions []ports.JokePublishDecision,
 	requireAtLeastOnePublished bool,
+	note *string,
 ) (*ports.PublishResult, error) {
 	b, ok := st.Batches[batchID]
 	if !ok {
@@ -619,6 +620,12 @@ func (st *Store) PublishBatch(
 	b.ProcessedAt = &now
 	b.LockedBy = nil
 	b.LockedAt = nil
+	// Mirrors markBatchProcessed: the note is stored with the PROCESSED flip.
+	b.MarketingNote = nil
+	if note != nil {
+		n := *note
+		b.MarketingNote = &n
+	}
 
 	state := st.ensureTeamState(b.RoundID, b.TeamID)
 	state.BatchesProcessed++
@@ -1309,6 +1316,10 @@ func cloneBatch(b *domain.Batch) *domain.Batch {
 	if b.RawTextOriginal != nil {
 		t := *b.RawTextOriginal
 		cp.RawTextOriginal = &t
+	}
+	if b.MarketingNote != nil {
+		t := *b.MarketingNote
+		cp.MarketingNote = &t
 	}
 	return &cp
 }

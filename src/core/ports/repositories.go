@@ -233,8 +233,10 @@ type MarketingRepository interface {
 	// PublishBatch applies the marketer's publish/discard decisions. Whether an
 	// all-discard batch is allowed is the caller's call: the ">=1 published"
 	// rule is game pedagogy (it holds in round 1 only), so the repository takes
-	// it as a flag instead of looking the round number up itself.
-	PublishBatch(ctx context.Context, batchID, marketerID, teamID int64, decisions []JokePublishDecision, requireAtLeastOnePublished bool) (*PublishResult, error)
+	// it as a flag instead of looking the round number up itself. note is
+	// Marketing's already-validated note to the Joke Maker (nil stores NULL); it
+	// is written in the same transaction that marks the batch PROCESSED.
+	PublishBatch(ctx context.Context, batchID, marketerID, teamID int64, decisions []JokePublishDecision, requireAtLeastOnePublished bool, note *string) (*PublishResult, error)
 	// SplitBatch replaces a batch's jokes with the supplied texts, clears
 	// raw_text (raw_text_original is left intact) and refreshes the lock.
 	// Conflicts when any existing joke has already been decided.

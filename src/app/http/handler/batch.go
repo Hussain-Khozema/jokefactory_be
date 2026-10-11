@@ -95,7 +95,9 @@ func (h *BatchHandler) List(c *gin.Context) {
 			"status":       b.Status,
 			"submitted_at": b.SubmittedAt,
 			"processed_at": b.ProcessedAt,
-			"jokes":        jokes,
+			// Marketing's note to the Joke Maker: a string, or null when none.
+			"marketing_note": b.MarketingNote,
+			"jokes":          jokes,
 		})
 	}
 	response.OK(c, gin.H{"batches": out})

@@ -149,7 +149,7 @@ func (h *MarketingHandler) Publish(c *gin.Context) {
 		})
 	}
 
-	result, err := h.marketingService.Publish(c.Request.Context(), userID, batchID, decisions)
+	result, err := h.marketingService.PublishWithNote(c.Request.Context(), userID, batchID, decisions, req.Note)
 	if err != nil {
 		response.FromDomainError(c, err, middleware.GetRequestID(c))
 		return
