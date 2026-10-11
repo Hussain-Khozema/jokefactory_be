@@ -82,10 +82,10 @@ func (s *InstructorService) Config(ctx context.Context, roundID int64, cfg *doma
 }
 
 // checkStartedRoundLock refuses, once a round has left CONFIGURED, to change
-// market_mode or (for a LEAN round) any lean setting. Lean customers get
-// arrival times only in StartRound, so a mode switch mid-round would strand
-// them (to LEAN) or make them all shop at once (to CLASSIC); and lean setup
-// and carrying costs are read at stats time, so changing them later would
+// market_mode or (for a LEAN round) any lean setting, the five fees included.
+// Lean customers get arrival times only in StartRound, so a mode switch
+// mid-round would strand them (to LEAN) or make them all shop at once (to
+// CLASSIC); and the fees are read at stats time, so changing them later would
 // rewrite the round's past profits. Re-sending the stored values, and every
 // other field (price, costs, budget, ...), are unaffected. Lean settings on a
 // CLASSIC round are ignored by the market, so they are not locked there.
@@ -115,14 +115,21 @@ func errStartedRoundLocked() error {
 }
 
 // leanSettingsChanged compares at the scale Postgres stores each column
-// (setup cost and preference base NUMERIC(_,2), carrying cost NUMERIC(_,4)),
-// so a value that round-trips through the database counts as unchanged.
+// (setup cost, shipping fees and preference base NUMERIC(_,2); carrying cost,
+// storage and hosting fees NUMERIC(_,4)), so a value that round-trips through
+// the database counts as unchanged. The fees are read at stats time, so
+// changing one after the start would rewrite the round's past profits.
 func leanSettingsChanged(r *domain.Round, cfg *domain.RoundConfig) bool {
 	return r.ArrivalWindowSeconds != cfg.ArrivalWindowSeconds ||
 		r.WIPLimit != cfg.WIPLimit ||
 		!sameAtScale(r.SetupCostPerBatch, cfg.SetupCostPerBatch, 100) ||
 		!sameAtScale(r.CarryingCostPerJokeMinute, cfg.CarryingCostPerJokeMinute, 10000) ||
-		!sameAtScale(r.PreferenceBase, cfg.PreferenceBase, 100)
+		!sameAtScale(r.PreferenceBase, cfg.PreferenceBase, 100) ||
+		!sameAtScale(r.ShippingFeeSmall, cfg.ShippingFeeSmall, 100) ||
+		!sameAtScale(r.ShippingFeeStandard, cfg.ShippingFeeStandard, 100) ||
+		!sameAtScale(r.ShippingFeeLarge, cfg.ShippingFeeLarge, 100) ||
+		!sameAtScale(r.StorageFeePerJokeMinute, cfg.StorageFeePerJokeMinute, 10000) ||
+		!sameAtScale(r.HostingFeePerJokeMinute, cfg.HostingFeePerJokeMinute, 10000)
 }
 
 func sameAtScale(a, b, scale float64) bool {
@@ -176,10 +183,37 @@ func validateLeanConfig(cfg *domain.RoundConfig) error {
 	if cfg.WIPLimit < 0 {
 		return domain.NewValidationError("wip_limit", "must be >= 0 (0 means no limit)")
 	}
+	if err := validateLeanFees(cfg); err != nil {
+		return err
+	}
 	// The column is NUMERIC(6,2) CHECK > 1: validate the value Postgres will
 	// store, so 1.001 (stored as 1.00) is a 400 rather than a DB error.
 	if math.Round(cfg.PreferenceBase*100)/100 <= 1 {
 		return domain.NewValidationError("preference_base", "must be > 1")
+	}
+	return nil
+}
+
+// validateLeanFees checks the five Lean fees: none negative, and a bigger
+// shipment never ships for less (small <= standard <= large).
+func validateLeanFees(cfg *domain.RoundConfig) error {
+	for _, f := range []struct {
+		field string
+		value float64
+	}{
+		{"shipping_fee_small", cfg.ShippingFeeSmall},
+		{"shipping_fee_standard", cfg.ShippingFeeStandard},
+		{"shipping_fee_large", cfg.ShippingFeeLarge},
+		{"storage_fee_per_joke_minute", cfg.StorageFeePerJokeMinute},
+		{"hosting_fee_per_joke_minute", cfg.HostingFeePerJokeMinute},
+	} {
+		if f.value < 0 {
+			return domain.NewValidationError(f.field, "must be >= 0")
+		}
+	}
+	if cfg.ShippingFeeSmall > cfg.ShippingFeeStandard || cfg.ShippingFeeStandard > cfg.ShippingFeeLarge {
+		return domain.NewValidationError("shipping_fee_standard",
+			"shipping fees must rise with batch size: shipping_fee_small <= shipping_fee_standard <= shipping_fee_large")
 	}
 	return nil
 }
@@ -437,6 +471,21 @@ func MergeConfig(base *domain.RoundConfig, overlay *PartialRoundConfig) domain.R
 	if overlay.PreferenceBase != nil {
 		cfg.PreferenceBase = *overlay.PreferenceBase
 	}
+	if overlay.ShippingFeeSmall != nil {
+		cfg.ShippingFeeSmall = *overlay.ShippingFeeSmall
+	}
+	if overlay.ShippingFeeStandard != nil {
+		cfg.ShippingFeeStandard = *overlay.ShippingFeeStandard
+	}
+	if overlay.ShippingFeeLarge != nil {
+		cfg.ShippingFeeLarge = *overlay.ShippingFeeLarge
+	}
+	if overlay.StorageFeePerJokeMinute != nil {
+		cfg.StorageFeePerJokeMinute = *overlay.StorageFeePerJokeMinute
+	}
+	if overlay.HostingFeePerJokeMinute != nil {
+		cfg.HostingFeePerJokeMinute = *overlay.HostingFeePerJokeMinute
+	}
 	return cfg
 }
 
@@ -461,4 +510,11 @@ type PartialRoundConfig struct {
 	CarryingCostPerJokeMinute *float64
 	WIPLimit                  *int // 0 means no limit
 	PreferenceBase            *float64
+
+	// Lean fees. nil keeps the existing value.
+	ShippingFeeSmall        *float64
+	ShippingFeeStandard     *float64
+	ShippingFeeLarge        *float64
+	StorageFeePerJokeMinute *float64
+	HostingFeePerJokeMinute *float64
 }

@@ -21,13 +21,23 @@ type RoundConfig struct {
 	CarryingCostPerJokeMinute float64
 	WIPLimit                  int
 	PreferenceBase            float64
+
+	// Lean fees (see lean_fees.go). They replace SetupCostPerBatch and
+	// CarryingCostPerJokeMinute, which are still stored but no longer read.
+	ShippingFeeSmall        float64
+	ShippingFeeStandard     float64
+	ShippingFeeLarge        float64
+	StorageFeePerJokeMinute float64
+	HostingFeePerJokeMinute float64
 }
 
 // IdealProfile maps each selectable dimension to its ideal category.
 // Excludes Title Fit (intrinsic / graded).
 type IdealProfile map[Dimension]string
 
-// DefaultRoundConfig returns the pilot defaults from §2.4.
+// DefaultRoundConfig returns the Lean defaults (one rule set for both rounds,
+// docs/superpowers/specs/2026-10-11-lean-fees-next-step-design.md §4) with
+// Round 1's batch size; DefaultRoundConfigFor gives a later round its own.
 func DefaultRoundConfig() RoundConfig {
 	return RoundConfig{
 		CustomerBudget:        DefaultCustomerBudget,
@@ -48,6 +58,12 @@ func DefaultRoundConfig() RoundConfig {
 		CarryingCostPerJokeMinute: DefaultCarryingCostPerJokeMinute,
 		WIPLimit:                  DefaultWIPLimit,
 		PreferenceBase:            DefaultPreferenceBase,
+
+		ShippingFeeSmall:        DefaultShippingFeeSmall,
+		ShippingFeeStandard:     DefaultShippingFeeStandard,
+		ShippingFeeLarge:        DefaultShippingFeeLarge,
+		StorageFeePerJokeMinute: DefaultStorageFeePerJokeMinute,
+		HostingFeePerJokeMinute: DefaultHostingFeePerJokeMinute,
 	}
 }
 
@@ -75,5 +91,11 @@ func ConfigFromRound(r *Round) RoundConfig {
 		CarryingCostPerJokeMinute: r.CarryingCostPerJokeMinute,
 		WIPLimit:                  r.WIPLimit,
 		PreferenceBase:            r.PreferenceBase,
+
+		ShippingFeeSmall:        r.ShippingFeeSmall,
+		ShippingFeeStandard:     r.ShippingFeeStandard,
+		ShippingFeeLarge:        r.ShippingFeeLarge,
+		StorageFeePerJokeMinute: r.StorageFeePerJokeMinute,
+		HostingFeePerJokeMinute: r.HostingFeePerJokeMinute,
 	}
 }

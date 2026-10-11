@@ -28,6 +28,13 @@ type PublicRound struct {
 	SetupCostPerBatch         float64 `json:"setup_cost_per_batch"`
 	CarryingCostPerJokeMinute float64 `json:"carrying_cost_per_joke_minute"`
 	WIPLimit                  int     `json:"wip_limit"` // 0 means no limit
+
+	// Lean fees. Students see them so their screens can quote the real amounts.
+	ShippingFeeSmall        float64 `json:"shipping_fee_small"`
+	ShippingFeeStandard     float64 `json:"shipping_fee_standard"`
+	ShippingFeeLarge        float64 `json:"shipping_fee_large"`
+	StorageFeePerJokeMinute float64 `json:"storage_fee_per_joke_minute"`
+	HostingFeePerJokeMinute float64 `json:"hosting_fee_per_joke_minute"`
 }
 
 // InstructorRound includes engine knobs instructors may tune.
@@ -69,6 +76,12 @@ func ToPublicRound(rd *domain.Round) PublicRound {
 		SetupCostPerBatch:         rd.SetupCostPerBatch,
 		CarryingCostPerJokeMinute: rd.CarryingCostPerJokeMinute,
 		WIPLimit:                  rd.WIPLimit,
+
+		ShippingFeeSmall:        rd.ShippingFeeSmall,
+		ShippingFeeStandard:     rd.ShippingFeeStandard,
+		ShippingFeeLarge:        rd.ShippingFeeLarge,
+		StorageFeePerJokeMinute: rd.StorageFeePerJokeMinute,
+		HostingFeePerJokeMinute: rd.HostingFeePerJokeMinute,
 	}
 }
 

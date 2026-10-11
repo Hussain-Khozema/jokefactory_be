@@ -41,6 +41,7 @@ func newSalesFixture(t *testing.T) *salesFixture {
 	marketing := usecase.NewMarketingService(store, worker.NoopDispatcher{}, log)
 
 	defaults := domain.DefaultRoundConfig()
+	defaults.MarketMode = domain.MarketClassic // every customer shops as soon as a joke is classified
 	defaults.BatchSize = 2
 	defaults.CustomerCount = 5
 	defaults.CustomerBudget = 3

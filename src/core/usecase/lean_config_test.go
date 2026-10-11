@@ -85,28 +85,6 @@ func TestConfigNormalisesMarketMode(t *testing.T) {
 	}
 }
 
-// Pins the Classic defaults: a round configured from defaults after a reset
-// reads back as CLASSIC with preference base 2 and no lean costs.
-func TestDefaultRoundIsClassic(t *testing.T) {
-	st, svc := newLeanConfigInstructor()
-	ctx := context.Background()
-	if err := st.ResetGame(ctx); err != nil {
-		t.Fatal(err)
-	}
-	cfg := domain.DefaultRoundConfig()
-	if _, err := svc.Config(ctx, 1, &cfg, nil); err != nil {
-		t.Fatal(err)
-	}
-	rd, err := svc.GetRound(ctx, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rd.MarketMode != domain.MarketClassic || rd.PreferenceBase != 2 || rd.ArrivalWindowSeconds != 900 ||
-		rd.SetupCostPerBatch != 0 || rd.CarryingCostPerJokeMinute != 0 || rd.WIPLimit != 0 {
-		t.Fatalf("default round is not classic: %+v", rd)
-	}
-}
-
 func TestMergeConfigLeanFields(t *testing.T) {
 	base := domain.DefaultRoundConfig()
 	mode := "LEAN"
@@ -132,6 +110,7 @@ func TestConfigLocksMarketModeOnceStarted(t *testing.T) {
 
 	// CONFIGURED: the mode may change freely.
 	cfg := domain.DefaultRoundConfig()
+	cfg.MarketMode = domain.MarketClassic
 	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +240,7 @@ func TestConfigAllowsClassicPriceChangeOnceStarted(t *testing.T) {
 	_, svc := newLeanConfigInstructor()
 	ctx := context.Background()
 	cfg := domain.DefaultRoundConfig()
+	cfg.MarketMode = domain.MarketClassic
 	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
 		t.Fatal(err)
 	}

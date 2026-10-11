@@ -184,6 +184,14 @@ Provision with the `az` CLI sketch in Appendix C, then:
 
 Rollback: if the backend image is rolled back, do NOT run `migrate-down`. The old image works with the column present, and Down deletes every note.
 
+### Deploying the Lean fees (migration 0005)
+
+1. Migrate first: `DB_DSN=<DSN> make migrate-up`, then `DB_DSN=<DSN> make migrate-status` and confirm `0005_lean_fees.sql` is Applied. The new backend reads the five fee columns on every round query, so it fails until 0005 is applied.
+2. Then deploy the backend, and press **Reset Game** before the next class: rounds written before 0005 carry zero fees and the old batch sizes until they are reset (Round 1 batch size 5, Round 2 batch size 10).
+3. Deploy the frontend last. An older frontend keeps working against the new backend: `setup_cost` and `carrying_cost` remain in the stats as aliases of the fees.
+
+Rollback: do NOT run `migrate-down`; the old image ignores the new columns.
+
 ## Make targets
 
 ```bash

@@ -53,18 +53,19 @@ func (s *AdminAuthService) Login(ctx context.Context, displayName, password stri
 	if err != nil {
 		return nil, err
 	}
-	defaults := domain.DefaultRoundConfig()
 	if round == nil || round.RoundNumber < 2 {
 		// Ensure round 1 exists
 		if round == nil {
-			r1, err := s.repo.InsertRoundConfig(ctx, 1, &defaults)
+			round1 := domain.DefaultRoundConfigFor(1)
+			r1, err := s.repo.InsertRoundConfig(ctx, 1, &round1)
 			if err != nil {
 				return nil, err
 			}
 			round = r1 // keep round 1 in the response for compatibility
 		}
-		// Ensure round 2 exists
-		if _, err := s.repo.InsertRoundConfig(ctx, 2, &defaults); err != nil {
+		// Ensure round 2 exists, with its own batch size (up to 10).
+		round2 := domain.DefaultRoundConfigFor(2)
+		if _, err := s.repo.InsertRoundConfig(ctx, 2, &round2); err != nil {
 			return nil, err
 		}
 	}

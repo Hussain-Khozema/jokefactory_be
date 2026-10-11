@@ -23,14 +23,3 @@ func TestParseMarketMode(t *testing.T) {
 		}
 	}
 }
-
-func TestDefaultRoundConfigIsClassic(t *testing.T) {
-	cfg := DefaultRoundConfig()
-	if cfg.MarketMode != MarketClassic {
-		t.Fatalf("default mode %q", cfg.MarketMode)
-	}
-	if cfg.ArrivalWindowSeconds != 900 || cfg.PreferenceBase != 2 || cfg.SetupCostPerBatch != 0 ||
-		cfg.CarryingCostPerJokeMinute != 0 || cfg.WIPLimit != 0 {
-		t.Fatalf("lean defaults wrong: %+v", cfg)
-	}
-}

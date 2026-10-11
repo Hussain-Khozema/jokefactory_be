@@ -32,6 +32,7 @@ func leanChartsStore(t *testing.T) (*testutil.Store, int64) {
 		t.Fatal(err)
 	}
 	classic := domain.DefaultRoundConfig()
+	classic.MarketMode = domain.MarketClassic
 	if _, err := st.InsertRoundConfig(ctx, 2, &classic); err != nil {
 		t.Fatal(err)
 	}

@@ -48,7 +48,7 @@ func (h *InstructorHandler) Config(c *gin.Context) {
 		return
 	}
 
-	base := domain.DefaultRoundConfig()
+	base := domain.DefaultRoundConfigFor(int(roundID))
 	existing, err := h.instructorService.GetRound(c.Request.Context(), roundID)
 	if err == nil {
 		base = domain.ConfigFromRound(existing)
@@ -57,25 +57,7 @@ func (h *InstructorHandler) Config(c *gin.Context) {
 		return
 	}
 
-	cfg := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{
-		CustomerBudget:            req.CustomerBudget,
-		BatchSize:                 req.BatchSize,
-		MarketPrice:               req.MarketPrice,
-		CostOfPublishing:          req.CostOfPublishing,
-		CostOfDiscard:             req.CostOfDiscard,
-		CustomerCount:             req.CustomerCount,
-		BuyThreshold:              req.BuyThreshold,
-		Jitter:                    req.Jitter,
-		SwapMargin:                req.SwapMargin,
-		FeedbackJokeCount:         req.FeedbackJokeCount,
-		FeedbackPassThreshold:     req.FeedbackPassThreshold,
-		MarketMode:                req.MarketMode,
-		ArrivalWindowSeconds:      req.ArrivalWindowSeconds,
-		SetupCostPerBatch:         req.SetupCostPerBatch,
-		CarryingCostPerJokeMinute: req.CarryingCostPerJokeMinute,
-		WIPLimit:                  req.WIPLimit,
-		PreferenceBase:            req.PreferenceBase,
-	})
+	cfg := usecase.MergeConfig(&base, partialConfig(&req))
 
 	result, err := h.instructorService.Config(
 		c.Request.Context(),
@@ -160,7 +142,7 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 		return
 	}
 	if bindErr == nil && hasConfigFields(&req) {
-		base := domain.DefaultRoundConfig()
+		base := domain.DefaultRoundConfigFor(int(roundID))
 		existing, err := h.instructorService.GetRound(c.Request.Context(), roundID)
 		if err == nil {
 			base = domain.ConfigFromRound(existing)
@@ -168,25 +150,7 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 			response.FromDomainError(c, err, middleware.GetRequestID(c))
 			return
 		}
-		cfg := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{
-			CustomerBudget:            req.CustomerBudget,
-			BatchSize:                 req.BatchSize,
-			MarketPrice:               req.MarketPrice,
-			CostOfPublishing:          req.CostOfPublishing,
-			CostOfDiscard:             req.CostOfDiscard,
-			CustomerCount:             req.CustomerCount,
-			BuyThreshold:              req.BuyThreshold,
-			Jitter:                    req.Jitter,
-			SwapMargin:                req.SwapMargin,
-			FeedbackJokeCount:         req.FeedbackJokeCount,
-			FeedbackPassThreshold:     req.FeedbackPassThreshold,
-			MarketMode:                req.MarketMode,
-			ArrivalWindowSeconds:      req.ArrivalWindowSeconds,
-			SetupCostPerBatch:         req.SetupCostPerBatch,
-			CarryingCostPerJokeMinute: req.CarryingCostPerJokeMinute,
-			WIPLimit:                  req.WIPLimit,
-			PreferenceBase:            req.PreferenceBase,
-		})
+		cfg := usecase.MergeConfig(&base, partialConfig(&req))
 		if _, err := h.instructorService.Config(
 			c.Request.Context(), roundID, &cfg, dto.IdealProfileToDomain(req.IdealProfile),
 		); err != nil {
@@ -202,6 +166,35 @@ func (h *InstructorHandler) StartRound(c *gin.Context) {
 	}
 	profile, _ := h.instructorService.GetIdealProfile(c.Request.Context(), roundID)
 	response.OK(c, gin.H{"round": dto.ToInstructorRound(round, profile)})
+}
+
+// partialConfig carries every optional config field of the request into the
+// usecase overlay; nil fields keep the round's current value.
+func partialConfig(req *dto.ConfigRequest) *usecase.PartialRoundConfig {
+	return &usecase.PartialRoundConfig{
+		CustomerBudget:            req.CustomerBudget,
+		BatchSize:                 req.BatchSize,
+		MarketPrice:               req.MarketPrice,
+		CostOfPublishing:          req.CostOfPublishing,
+		CostOfDiscard:             req.CostOfDiscard,
+		CustomerCount:             req.CustomerCount,
+		BuyThreshold:              req.BuyThreshold,
+		Jitter:                    req.Jitter,
+		SwapMargin:                req.SwapMargin,
+		FeedbackJokeCount:         req.FeedbackJokeCount,
+		FeedbackPassThreshold:     req.FeedbackPassThreshold,
+		MarketMode:                req.MarketMode,
+		ArrivalWindowSeconds:      req.ArrivalWindowSeconds,
+		SetupCostPerBatch:         req.SetupCostPerBatch,
+		CarryingCostPerJokeMinute: req.CarryingCostPerJokeMinute,
+		WIPLimit:                  req.WIPLimit,
+		PreferenceBase:            req.PreferenceBase,
+		ShippingFeeSmall:          req.ShippingFeeSmall,
+		ShippingFeeStandard:       req.ShippingFeeStandard,
+		ShippingFeeLarge:          req.ShippingFeeLarge,
+		StorageFeePerJokeMinute:   req.StorageFeePerJokeMinute,
+		HostingFeePerJokeMinute:   req.HostingFeePerJokeMinute,
+	}
 }
 
 func hasConfigFields(req *dto.ConfigRequest) bool {
@@ -222,6 +215,11 @@ func hasConfigFields(req *dto.ConfigRequest) bool {
 		req.CarryingCostPerJokeMinute != nil ||
 		req.WIPLimit != nil ||
 		req.PreferenceBase != nil ||
+		req.ShippingFeeSmall != nil ||
+		req.ShippingFeeStandard != nil ||
+		req.ShippingFeeLarge != nil ||
+		req.StorageFeePerJokeMinute != nil ||
+		req.HostingFeePerJokeMinute != nil ||
 		req.IdealProfile != nil
 }
 

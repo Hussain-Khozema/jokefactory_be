@@ -43,6 +43,13 @@ type Round struct {
 	WIPLimit                  int
 	PreferenceBase            float64
 
+	// Lean fees (see lean_fees.go).
+	ShippingFeeSmall        float64
+	ShippingFeeStandard     float64
+	ShippingFeeLarge        float64
+	StorageFeePerJokeMinute float64
+	HostingFeePerJokeMinute float64
+
 	StartedAt      *time.Time
 	EndedAt        *time.Time
 	CreatedAt      time.Time

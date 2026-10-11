@@ -7,11 +7,12 @@ import (
 
 // MarketMode selects how AI customers buy and how profit is computed.
 //
-// CLASSIC is the game as shipped: every customer shops the moment a joke is
-// classified and swaps for better jokes later. LEAN is the opt-in mode in
-// which customers arrive steadily, shop once, and teams pay setup and carrying
-// costs. Every Lean rule in the code base is guarded by this value, so a
-// CLASSIC round runs the original code paths untouched.
+// CLASSIC is the game as first shipped: every customer shops the moment a
+// joke is classified and swaps for better jokes later. LEAN, the default on
+// this branch, has customers arrive steadily and shop once, and charges teams
+// the shipping, storage and hosting fees (lean_fees.go). Every Lean rule in the
+// code base is guarded by this value, so a CLASSIC round still runs the
+// original code paths untouched.
 type MarketMode string
 
 const (

@@ -342,8 +342,27 @@ func (st *Store) ensureTeamState(roundID, teamID int64) *domain.TeamRoundState {
 	return s
 }
 
+// ResetGame mirrors the Postgres reset: every round row stays, back to
+// CONFIGURED with the defaults of its round number (Round 1 batch size 5,
+// Round 2 batch size 10); instructors stay; everything else is cleared and the
+// id counters restart, except users, whose ids keep counting as in Postgres.
 func (st *Store) ResetGame(context.Context) error {
-	*st = *NewStore()
+	fresh := NewStore()
+	fresh.Now = st.Now
+	fresh.NextUser = st.NextUser
+	for id, r := range st.Rounds {
+		cfg := domain.DefaultRoundConfigFor(r.RoundNumber)
+		reset := &domain.Round{ID: r.ID, RoundNumber: r.RoundNumber, Status: domain.RoundConfigured, CreatedAt: r.CreatedAt}
+		applyConfig(reset, &cfg)
+		fresh.Rounds[id] = reset
+	}
+	for id, u := range st.Users {
+		if u.Role != nil && *u.Role == domain.RoleInstructor {
+			fresh.Users[id] = cloneUser(u)
+			fresh.ByName[u.DisplayName] = id
+		}
+	}
+	*st = *fresh
 	return nil
 }
 
@@ -1258,6 +1277,11 @@ func applyConfig(r *domain.Round, cfg *domain.RoundConfig) {
 	r.CarryingCostPerJokeMinute = cfg.CarryingCostPerJokeMinute
 	r.WIPLimit = cfg.WIPLimit
 	r.PreferenceBase = cfg.PreferenceBase
+	r.ShippingFeeSmall = cfg.ShippingFeeSmall
+	r.ShippingFeeStandard = cfg.ShippingFeeStandard
+	r.ShippingFeeLarge = cfg.ShippingFeeLarge
+	r.StorageFeePerJokeMinute = cfg.StorageFeePerJokeMinute
+	r.HostingFeePerJokeMinute = cfg.HostingFeePerJokeMinute
 }
 
 func cloneUser(u *domain.User) *domain.User {

@@ -82,14 +82,21 @@ func (r *Repositories) UpdateRoundConfig(ctx context.Context, roundID int64, cfg
 		    setup_cost_per_batch = $15,
 		    carrying_cost_per_joke_minute = $16,
 		    wip_limit = $17,
-		    preference_base = $18
+		    preference_base = $18,
+		    shipping_fee_small = $19,
+		    shipping_fee_standard = $20,
+		    shipping_fee_large = $21,
+		    storage_fee_per_joke_minute = $22,
+		    hosting_fee_per_joke_minute = $23
 		WHERE round_id = $1
 		RETURNING `+roundColumns, roundID,
 		cfg.CustomerBudget, cfg.BatchSize, cfg.MarketPrice, cfg.CostOfPublishing,
 		cfg.CostOfDiscard, cfg.CustomerCount, cfg.BuyThreshold, cfg.Jitter,
 		cfg.SwapMargin, cfg.FeedbackJokeCount, cfg.FeedbackPassThreshold,
 		string(cfg.MarketMode), cfg.ArrivalWindowSeconds, cfg.SetupCostPerBatch,
-		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase))
+		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase,
+		cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge,
+		cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
@@ -115,17 +122,21 @@ func (r *Repositories) InsertRoundConfig(ctx context.Context, roundID int64, cfg
 			cost_of_discard, customer_count, buy_threshold, jitter, swap_margin,
 			feedback_joke_count, feedback_pass_threshold,
 			market_mode, arrival_window_seconds, setup_cost_per_batch,
-			carrying_cost_per_joke_minute, wip_limit, preference_base
+			carrying_cost_per_joke_minute, wip_limit, preference_base,
+			shipping_fee_small, shipping_fee_standard, shipping_fee_large,
+			storage_fee_per_joke_minute, hosting_fee_per_joke_minute
 		)
 		VALUES ($1, $2, 'CONFIGURED', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-			$14, $15, $16, $17, $18, $19)
+			$14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		RETURNING `+roundColumns,
 		roundID, int(roundID),
 		cfg.CustomerBudget, cfg.BatchSize, cfg.MarketPrice, cfg.CostOfPublishing,
 		cfg.CostOfDiscard, cfg.CustomerCount, cfg.BuyThreshold, cfg.Jitter,
 		cfg.SwapMargin, cfg.FeedbackJokeCount, cfg.FeedbackPassThreshold,
 		string(cfg.MarketMode), cfg.ArrivalWindowSeconds, cfg.SetupCostPerBatch,
-		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase))
+		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase,
+		cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge,
+		cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute))
 }
 
 func (r *Repositories) UpsertIdealProfile(ctx context.Context, roundID int64, profile domain.IdealProfile) error {
@@ -229,8 +240,12 @@ func (r *Repositories) EnsureTeamRoundState(ctx context.Context, roundID, teamID
 	return err
 }
 
+// ResetGame clears all game data and puts every round back to CONFIGURED with
+// the defaults: one Lean rule set, with batch_size 5 (exact) for Round 1 and
+// 10 (a cap) for Round 2 and later.
 func (r *Repositories) ResetGame(ctx context.Context) error {
 	cfg := domain.DefaultRoundConfig()
+	round2 := domain.DefaultRoundConfigFor(2)
 	return r.pg.WithTx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			TRUNCATE TABLE
@@ -253,7 +268,7 @@ func (r *Repositories) ResetGame(ctx context.Context) error {
 			UPDATE rounds
 			SET status = 'CONFIGURED',
 			    customer_budget = $1,
-			    batch_size = $2,
+			    batch_size = CASE WHEN round_number >= 2 THEN $18::int ELSE $2::int END,
 			    market_price = $3,
 			    cost_of_publishing = $4,
 			    cost_of_discard = $5,
@@ -269,6 +284,11 @@ func (r *Repositories) ResetGame(ctx context.Context) error {
 			    carrying_cost_per_joke_minute = $15,
 			    wip_limit = $16,
 			    preference_base = $17,
+			    shipping_fee_small = $19,
+			    shipping_fee_standard = $20,
+			    shipping_fee_large = $21,
+			    storage_fee_per_joke_minute = $22,
+			    hosting_fee_per_joke_minute = $23,
 			    started_at = NULL,
 			    ended_at = NULL,
 			    is_popped_active = FALSE`,
@@ -289,6 +309,12 @@ func (r *Repositories) ResetGame(ctx context.Context) error {
 			cfg.CarryingCostPerJokeMinute,
 			cfg.WIPLimit,
 			cfg.PreferenceBase,
+			round2.BatchSize,
+			cfg.ShippingFeeSmall,
+			cfg.ShippingFeeStandard,
+			cfg.ShippingFeeLarge,
+			cfg.StorageFeePerJokeMinute,
+			cfg.HostingFeePerJokeMinute,
 		); err != nil {
 			return err
 		}

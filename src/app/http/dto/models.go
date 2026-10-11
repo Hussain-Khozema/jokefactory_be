@@ -84,6 +84,14 @@ type ConfigRequest struct {
 	CarryingCostPerJokeMinute *float64 `json:"carrying_cost_per_joke_minute"`
 	WIPLimit                  *int     `json:"wip_limit"` // 0 means no limit
 	PreferenceBase            *float64 `json:"preference_base"`
+
+	// Lean fees (domain/lean_fees.go): shipping per sent batch by size, and
+	// storage / hosting per joke-minute. Locked once the round has started.
+	ShippingFeeSmall        *float64 `json:"shipping_fee_small"`
+	ShippingFeeStandard     *float64 `json:"shipping_fee_standard"`
+	ShippingFeeLarge        *float64 `json:"shipping_fee_large"`
+	StorageFeePerJokeMinute *float64 `json:"storage_fee_per_joke_minute"`
+	HostingFeePerJokeMinute *float64 `json:"hosting_fee_per_joke_minute"`
 }
 
 // IdealProfileToDomain converts a string-keyed map to domain.IdealProfile.
