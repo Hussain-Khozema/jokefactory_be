@@ -176,6 +176,14 @@ Provision with the `az` CLI sketch in Appendix C, then:
 
 > Horizontal scale later requires replacing the in-memory dispatcher with a shared broker; the reconciler covers restarts today.
 
+### Deploying the Marketing note (migration 0004)
+
+1. Migrate the production database first: `DB_DSN=<production DSN> make migrate-up`, then `DB_DSN=<production DSN> make migrate-status` and confirm `0004_batch_marketing_note.sql` is Applied. The new backend selects `batches.marketing_note`, so it fails on every batch query until 0004 is applied.
+2. Then `make deploy` the backend.
+3. Deploy the frontend last. An old backend ignores the `note` field, so a new frontend talking to it would drop notes while showing "note sent".
+
+Rollback: if the backend image is rolled back, do NOT run `migrate-down`. The old image works with the column present, and Down deletes every note.
+
 ## Make targets
 
 ```bash
