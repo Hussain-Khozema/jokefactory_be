@@ -62,26 +62,30 @@ func TestMemStoreLeanChartRowsMirrorTheLeanStats(t *testing.T) {
 		t.Fatalf("%d sold jokes; want 1", sold)
 	}
 
-	// The leaderboard's carrying cost is rate × (wip + inventory) of these rows.
+	// The leaderboard's fees are the rows' shipping and fee × joke-minutes.
 	stats, err := st.GetRoundStatsLean(ctx, round.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := round.CarryingCostPerJokeMinute * (tr.WIPJokeMinutes + tr.InventoryJokeMinutes)
-	if !approx(stats.Leaderboard[0].Lean.CarryingCost, want) {
-		t.Fatalf("leaderboard carrying %.4f; rows give %.4f", stats.Leaderboard[0].Lean.CarryingCost, want)
+	lean := stats.Leaderboard[0].Lean
+	if !approx(lean.ShippingCost, tr.ShippingCost) || !approx(tr.ShippingCost, 3) ||
+		!approx(lean.StorageCost, round.StorageFeePerJokeMinute*tr.WIPJokeMinutes) ||
+		!approx(lean.HostingCost, round.HostingFeePerJokeMinute*tr.InventoryJokeMinutes) {
+		t.Fatalf("leaderboard %+v; rows give shipping %.4f, WIP %.4f, inventory %.4f",
+			*lean, tr.ShippingCost, tr.WIPJokeMinutes, tr.InventoryJokeMinutes)
 	}
 }
 
-// Review focus 2 and 3: an unsplit batch counts batch_size jokes of WIP, and a
-// team with no batches still gets a (zero) row.
+// Review focus 2 and 3: an unsplit batch counts 5 jokes of WIP and ships as
+// the standard 5, even when the round allows batches of 10, and a team with no
+// batches still gets a (zero) row.
 func TestMemStoreLeanChartRowsUnsplitBatchAndEmptyTeam(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewStore()
 	cfg := domain.DefaultRoundConfig()
 	cfg.MarketMode = domain.MarketLean
-	cfg.BatchSize = 5
-	cfg.CarryingCostPerJokeMinute = 0.05
+	cfg.BatchSize = 10
+	cfg.StorageFeePerJokeMinute = 0.05
 	if _, err := st.InsertRoundConfig(ctx, 1, &cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +106,8 @@ func TestMemStoreLeanChartRowsUnsplitBatchAndEmptyTeam(t *testing.T) {
 	if len(rows.Teams) != 2 || rows.Teams[0].TeamID != 1 || rows.Teams[1].TeamID != 2 {
 		t.Fatalf("teams %+v; want teams 1 and 2 in id order", rows.Teams)
 	}
-	if got := rows.Teams[0]; got.BatchesSubmitted != 1 || math.Abs(got.WIPJokeMinutes-10) > 1e-9 {
-		t.Fatalf("team 1 %+v; want 1 submitted and 5 jokes × 2 min = 10 joke-min", got)
+	if got := rows.Teams[0]; got.BatchesSubmitted != 1 || math.Abs(got.WIPJokeMinutes-10) > 1e-9 || got.ShippingCost != 2 {
+		t.Fatalf("team 1 %+v; want 1 submitted, 5 jokes × 2 min = 10 joke-min, standard shipping $2", got)
 	}
 	if got := rows.Teams[1]; got.BatchesSubmitted != 0 || got.WIPJokeMinutes != 0 || got.InventoryJokeMinutes != 0 {
 		t.Fatalf("team 2 %+v; want zeros", got)
@@ -117,8 +121,8 @@ func TestMemStoreLeanChartRowsUnsplitBatchAndEmptyTeam(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, row := range stats.Leaderboard {
-		if row.Team.ID == 1 && math.Abs(row.Lean.CarryingCost-0.05*10) > 1e-9 {
-			t.Fatalf("leaderboard carrying %.4f; want 0.50", row.Lean.CarryingCost)
+		if row.Team.ID == 1 && (math.Abs(row.Lean.StorageCost-0.05*10) > 1e-9 || row.Lean.CarryingCost != row.Lean.StorageCost) {
+			t.Fatalf("leaderboard storage %.4f, carrying %.4f; want both 0.50", row.Lean.StorageCost, row.Lean.CarryingCost)
 		}
 	}
 }

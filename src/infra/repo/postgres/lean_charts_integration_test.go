@@ -30,8 +30,9 @@ import (
 )
 
 // Fixture (round ENDED 10:00–10:30, arrival window 900 s so one sample a
-// minute, WIP limit 2, setup $3, carrying $0.02/joke-min, batch size 5,
-// publishing $0.10, discard $0.01) — the lean stats fixture:
+// minute, WIP limit 2, shipping $3 for every batch size, storage and hosting
+// $0.02/joke-min, batch size 5, publishing $0.10, discard $0.01) — the lean
+// stats fixture:
 //
 //	Team A: batch of 5 sent 10:00, released 10:06, 3 published / 2 discarded.
 //	        Joke 1 bought 10:10 and returned 10:12; joke 2 bought 10:20 and
@@ -102,9 +103,10 @@ func TestLeanChartsSQLIntegration(t *testing.T) {
 		t.Helper()
 		id := mustID(`
 			INSERT INTO rounds (round_id, round_number, status, batch_size, market_price, cost_of_publishing, cost_of_discard,
-			                    market_mode, arrival_window_seconds, setup_cost_per_batch, carrying_cost_per_joke_minute,
+			                    market_mode, arrival_window_seconds, shipping_fee_small, shipping_fee_standard,
+			                    shipping_fee_large, storage_fee_per_joke_minute, hosting_fee_per_joke_minute,
 			                    wip_limit, started_at, ended_at)
-			VALUES ($1, 999, $2::text::round_status, 5, 1, 0.10, 0.01, $3, 900, 3, 0.02, 2, $4, $5)
+			VALUES ($1, 999, $2::text::round_status, 5, 1, 0.10, 0.01, $3, 900, 3, 3, 3, 0.02, 0.02, 2, $4, $5)
 			RETURNING round_id`, nextID("rounds", "round_id"), status, mode, startedAt, endedAt)
 		rounds = append(rounds, id)
 		return id

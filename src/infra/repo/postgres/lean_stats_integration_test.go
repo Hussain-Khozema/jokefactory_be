@@ -23,7 +23,9 @@ import (
 	"jokefactory/src/infra/db"
 )
 
-// Fixture (round ENDED, 10:00–10:30, setup $3, carrying $0.02/joke-min, batch
+// Fixture (round ENDED, 10:00–10:30, shipping $3 for every batch size,
+// storage and hosting $0.02/joke-min — so setup_cost is $3 a batch and
+// carrying_cost is $0.02 a joke-minute, as before the fees were split — batch
 // size 5, price $1, publishing $0.10, discard $0.01):
 //
 //	Team A: batch submitted 10:00, processed 10:06, 3 published / 2 discarded.
@@ -95,8 +97,9 @@ func TestLeanStatsSQLIntegration(t *testing.T) {
 
 	roundID = mustID(`
 		INSERT INTO rounds (round_id, round_number, status, batch_size, market_price, cost_of_publishing, cost_of_discard,
-		                    market_mode, setup_cost_per_batch, carrying_cost_per_joke_minute, started_at, ended_at)
-		VALUES ($1, 999, 'ENDED', 5, 1, 0.10, 0.01, 'LEAN', 3, 0.02, $2, $3)
+		                    market_mode, shipping_fee_small, shipping_fee_standard, shipping_fee_large,
+		                    storage_fee_per_joke_minute, hosting_fee_per_joke_minute, started_at, ended_at)
+		VALUES ($1, 999, 'ENDED', 5, 1, 0.10, 0.01, 'LEAN', 3, 3, 3, 0.02, 0.02, $2, $3)
 		RETURNING round_id`, nextID("rounds", "round_id"), at(0), at(30))
 	team := func(name string) int64 {
 		id := mustID(`INSERT INTO teams (id, name) VALUES ($1, $2) RETURNING id`, nextID("teams", "id"), suffix+name)

@@ -60,8 +60,8 @@ func (st *Store) GetLeanChartRows(ctx context.Context, roundID int64) (*ports.Le
 	})
 
 	type acc struct {
-		submitted  int
-		wip, shelf float64
+		submitted            int
+		shipping, wip, shelf float64
 	}
 	byTeam := make(map[int64]*acc)
 	out := &ports.LeanChartRows{
@@ -77,9 +77,11 @@ func (st *Store) GetLeanChartRows(ctx context.Context, roundID int64) (*ports.Le
 			byTeam[b.TeamID] = a
 		}
 		a.submitted++
+		a.shipping += domain.ShippingFeeFor(len(b.Jokes),
+			rd.ShippingFeeSmall, rd.ShippingFeeStandard, rd.ShippingFeeLarge)
 		jokes := len(b.Jokes)
 		if jokes == 0 {
-			jokes = rd.BatchSize
+			jokes = domain.StandardShipmentJokes
 		}
 		row := ports.LeanChartBatchRow{
 			BatchID: b.ID, TeamID: b.TeamID, SubmittedAt: b.SubmittedAt.UTC(), JokeRows: len(b.Jokes),
@@ -131,7 +133,8 @@ func (st *Store) GetLeanChartRows(ctx context.Context, roundID int64) (*ports.Le
 		}
 		row := ports.LeanChartTeamRow{TeamID: team.ID, TeamName: team.Name, DiscardedJokes: state.DiscardedJokes}
 		if a := byTeam[team.ID]; a != nil {
-			row.BatchesSubmitted, row.WIPJokeMinutes, row.InventoryJokeMinutes = a.submitted, a.wip, a.shelf
+			row.BatchesSubmitted, row.ShippingCost = a.submitted, a.shipping
+			row.WIPJokeMinutes, row.InventoryJokeMinutes = a.wip, a.shelf
 		}
 		out.Teams = append(out.Teams, row)
 	}

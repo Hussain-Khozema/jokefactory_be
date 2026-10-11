@@ -24,8 +24,11 @@ func seedLeanStatsFixture(t *testing.T, st *testutil.Store) (*domain.Round, int6
 	cfg.MarketPrice = 1
 	cfg.CostOfPublishing = 0.10
 	cfg.CostOfDiscard = 0.01
-	cfg.SetupCostPerBatch = 3
-	cfg.CarryingCostPerJokeMinute = 0.02
+	// Flat $3 shipping and one $0.02 rate for storage and hosting keep the
+	// old setup $3 / carrying $0.02 arithmetic of the tests built on this.
+	cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge = 3, 3, 3
+	cfg.StorageFeePerJokeMinute = 0.02
+	cfg.HostingFeePerJokeMinute = 0.02
 	if _, err := st.InsertRoundConfig(ctx, 1, &cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -79,11 +82,13 @@ func seedLeanStatsFixture(t *testing.T, st *testutil.Store) (*domain.Round, int6
 
 // One team, one batch of 5 submitted at T, processed at T+6min with 3
 // published and 2 discarded; one published joke sold at T+10min; now = T+16min;
-// setup $3, carrying $0.02/joke-min, price $1, publishing $0.10, discard $0.01.
+// shipping $3, storage and hosting $0.02/joke-min, price $1, publishing $0.10,
+// discard $0.01.
 //
 //	WIP:        5 jokes × 6 min                     = 30 joke-min
 //	Inventory:  sold joke 4 min (6→10) + 2 unsold × 10 min (6→16) = 24 joke-min
-//	carrying = 0.02 × 54 = 1.08 ; setup = 3
+//	storage = 0.02 × 30 = 0.60 ; hosting = 0.02 × 24 = 0.48 ; shipping = 3
+//	carrying = 1.08 ; setup = 3
 //	profit   = 1×1 − 3×0.10 − 2×0.01 − 3 − 1.08 = −3.40
 func TestLeanStatsComputeSetupAndCarrying(t *testing.T) {
 	st := testutil.NewStore()

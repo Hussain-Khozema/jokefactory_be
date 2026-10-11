@@ -12,8 +12,10 @@ import (
 // MaxLeanChartSamples caps the idle and sell-through series of the lean charts.
 const MaxLeanChartSamples = 120
 
-// LeanWaste is a team's cost of waste by kind, in dollars. Setup + Waiting +
-// Shelf equals the leaderboard's setup_cost + carrying_cost.
+// LeanWaste is a team's cost of waste by kind, in dollars. The JSON keys
+// predate the fee names: Setup is the shipping fee, Waiting the storage fee and
+// Shelf the hosting fee, so Setup + Waiting + Shelf equals the leaderboard's
+// shipping_cost + storage_cost + hosting_cost (= setup_cost + carrying_cost).
 type LeanWaste struct {
 	Setup     float64 `json:"setup"`
 	Waiting   float64 `json:"waiting"`
@@ -104,13 +106,14 @@ func LeanChartSampling(windowSeconds int, elapsed float64) (step, count int) {
 // BuildLeanCharts turns one snapshot of a round's rows into the lean-charts
 // body. It is pure; every rule of the lean charts lives here:
 //
-//	waste      setup = batches_submitted × setup_cost_per_batch,
-//	           waiting = rate × WIP joke-minutes, shelf = rate × inventory
-//	           joke-minutes, never_sold = cost_of_publishing × published jokes
-//	           never sold, discarded = cost_of_discard × discarded jokes
+//	waste      setup = the leaderboard's shipping_cost, waiting = storage fee ×
+//	           WIP joke-minutes, shelf = hosting fee × inventory joke-minutes,
+//	           never_sold = cost_of_publishing × published jokes never sold,
+//	           discarded = cost_of_discard × discarded jokes
 //	idle(t)    waiting = Σ jokes of batches with submitted ≤ t < processed;
 //	           shelf = published jokes with published ≤ t < first sale
-//	jokes      a batch's joke rows, or batch_size while it is unsplit
+//	jokes      a batch's joke rows, or 5 (domain.StandardShipmentJokes)
+//	           while it is unsplit
 //	average    mean over every team row; sell-through pooled per sample
 func BuildLeanCharts(round *domain.Round, rows *ports.LeanChartRows) LeanCharts {
 	out := LeanCharts{
@@ -139,7 +142,7 @@ func BuildLeanCharts(round *domain.Round, rows *ports.LeanChartRows) LeanCharts 
 		if b.JokeRows > 0 {
 			return b.JokeRows
 		}
-		return round.BatchSize
+		return domain.StandardShipmentJokes
 	}
 	batchesOf := make(map[int64][]ports.LeanChartBatchRow)
 	for _, b := range rows.Batches {
@@ -205,9 +208,9 @@ func teamWaste(round *domain.Round, tr ports.LeanChartTeamRow, jokes []ports.Lea
 		}
 	}
 	w := LeanWaste{
-		Setup:     float64(tr.BatchesSubmitted) * round.SetupCostPerBatch,
-		Waiting:   round.CarryingCostPerJokeMinute * tr.WIPJokeMinutes,
-		Shelf:     round.CarryingCostPerJokeMinute * tr.InventoryJokeMinutes,
+		Setup:     tr.ShippingCost,
+		Waiting:   round.StorageFeePerJokeMinute * tr.WIPJokeMinutes,
+		Shelf:     round.HostingFeePerJokeMinute * tr.InventoryJokeMinutes,
 		NeverSold: round.CostOfPublishing * float64(neverSold),
 		Discarded: round.CostOfDiscard * float64(tr.DiscardedJokes),
 	}

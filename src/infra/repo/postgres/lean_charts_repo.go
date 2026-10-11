@@ -23,7 +23,7 @@ WITH first_sale AS (
 // leanChartTeamsSQL is one row per team_rounds_state row of round $1 with the
 // totals the lean charts need, from the same CTE as the leaderboard.
 const leanChartTeamsSQL = leanTeamCTE + `
-SELECT team_id, team_name, batches_submitted, discarded_jokes,
+SELECT team_id, team_name, batches_submitted, discarded_jokes, shipping_cost,
        wip_joke_minutes, inventory_joke_minutes
 FROM profits
 ORDER BY team_id`
@@ -56,8 +56,8 @@ ORDER BY b.team_id, j.published_at, j.joke_id`
 
 // GetLeanChartRows reads the lean charts' rows in one read-only REPEATABLE
 // READ transaction: every query sees the same rows and the same now(), so a
-// running round's clock end, idle samples and carrying minutes stop at one
-// instant. Nothing is written.
+// running round's clock end, idle samples and storage and hosting minutes stop
+// at one instant. Nothing is written.
 func (r *Repositories) GetLeanChartRows(ctx context.Context, roundID int64) (*ports.LeanChartRows, error) {
 	tx, err := r.pg.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -95,7 +95,7 @@ func leanChartTeams(ctx context.Context, tx pgx.Tx, roundID int64) ([]ports.Lean
 	out := []ports.LeanChartTeamRow{}
 	for rows.Next() {
 		var t ports.LeanChartTeamRow
-		if err := rows.Scan(&t.TeamID, &t.TeamName, &t.BatchesSubmitted, &t.DiscardedJokes,
+		if err := rows.Scan(&t.TeamID, &t.TeamName, &t.BatchesSubmitted, &t.DiscardedJokes, &t.ShippingCost,
 			&t.WIPJokeMinutes, &t.InventoryJokeMinutes); err != nil {
 			return nil, err
 		}

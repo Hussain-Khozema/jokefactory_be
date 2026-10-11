@@ -13,31 +13,38 @@ import (
 
 // leanTeamCTE computes, per team of round $1, everything Lean mode adds, and
 // ends in `profits`: one row per team_rounds_state row, with the Classic
-// counts, the Lean profit and the five Lean columns. The Classic queries in
+// counts, the Lean profit and the Lean columns. The Classic queries in
 // stats_repo.go are not touched.
 //
-//	cfg         round settings; clock_end = ended_at, or now() while running
+//	cfg         round settings and fees; clock_end = ended_at, or now() while running
 //	submitted   batches_submitted = +1 batch_submission_events (a submit);
 //	            the -1 events record processing, so they are not counted
 //	batch_jokes one row per submitted batch with its joke-row count
+//	shipping    Σ over sent batches of the shipping fee for its size: small
+//	            for 1–4 jokes, standard for 5, large for 6+; an unsplit batch
+//	            (0 joke rows) ships as 5 (domain.StandardShipmentJokes)
 //	wip         Σ jokes × minutes(submitted_at → processed_at or clock_end),
-//	            an unsplit batch (0 joke rows) counting batch_size jokes;
-//	            plus the mean submit → processed seconds of processed batches
+//	            an unsplit batch counting 5 jokes (not batch_size); plus the
+//	            mean submit → processed seconds of processed batches
 //	first_sale  each joke's earliest +1 purchase event
 //	inventory   Σ over PUBLISHED jokes of minutes(published_at → first sale
 //	            or clock_end); discarded jokes never carry; plus the mean
 //	            publish → first sale seconds of sold jokes
-//	lean        setup_cost = batches_submitted × setup_cost_per_batch,
-//	            carrying_cost = carrying_cost_per_joke_minute × (wip + inventory),
-//	            and wip_joke_minutes / inventory_joke_minutes, the two halves
-//	            the lean charts show separately
-//	profits     Classic profit − setup_cost − carrying_cost
+//	lean        shipping_cost; storage_cost = storage fee × wip joke-minutes;
+//	            hosting_cost = hosting fee × inventory joke-minutes; and the
+//	            two joke-minute totals the lean charts show separately
+//	profits     Classic profit − shipping − storage − hosting, plus the
+//	            aliases setup_cost = shipping_cost and
+//	            carrying_cost = storage_cost + hosting_cost
 const leanTeamCTE = `
 WITH cfg AS (
-	SELECT market_price, cost_of_publishing, cost_of_discard, batch_size,
-	       setup_cost_per_batch::float8          AS setup_cost_per_batch,
-	       carrying_cost_per_joke_minute::float8 AS carrying_cost_per_joke_minute,
-	       COALESCE(ended_at, now())             AS clock_end
+	SELECT market_price, cost_of_publishing, cost_of_discard,
+	       shipping_fee_small::float8          AS shipping_fee_small,
+	       shipping_fee_standard::float8       AS shipping_fee_standard,
+	       shipping_fee_large::float8          AS shipping_fee_large,
+	       storage_fee_per_joke_minute::float8 AS storage_fee_per_joke_minute,
+	       hosting_fee_per_joke_minute::float8 AS hosting_fee_per_joke_minute,
+	       COALESCE(ended_at, now())           AS clock_end
 	FROM rounds WHERE round_id = $1
 ),
 submitted AS (
@@ -54,10 +61,19 @@ batch_jokes AS (
 	WHERE b.round_id = $1 AND b.submitted_at IS NOT NULL
 	GROUP BY b.batch_id
 ),
+shipping AS (
+	SELECT bj.team_id,
+	       SUM(CASE WHEN bj.jokes < 5 THEN c.shipping_fee_small
+	                WHEN bj.jokes = 5 THEN c.shipping_fee_standard
+	                ELSE c.shipping_fee_large END) AS shipping_cost
+	FROM (SELECT team_id, CASE WHEN joke_rows > 0 THEN joke_rows ELSE 5 END AS jokes FROM batch_jokes) bj
+	CROSS JOIN cfg c
+	GROUP BY bj.team_id
+),
 wip AS (
 	SELECT bj.team_id,
 	       SUM(
-	         (CASE WHEN bj.joke_rows > 0 THEN bj.joke_rows ELSE c.batch_size END)
+	         (CASE WHEN bj.joke_rows > 0 THEN bj.joke_rows ELSE 5 END)
 	         * GREATEST(EXTRACT(EPOCH FROM (COALESCE(bj.processed_at, c.clock_end) - bj.submitted_at))::float8, 0)
 	         / 60.0
 	       ) AS wip_joke_minutes,
@@ -89,10 +105,10 @@ inventory AS (
 ),
 lean AS (
 	SELECT trs.team_id,
-	       COALESCE(s.batches_submitted, 0) AS batches_submitted,
-	       COALESCE(s.batches_submitted, 0) * c.setup_cost_per_batch AS setup_cost,
-	       c.carrying_cost_per_joke_minute
-	         * (COALESCE(w.wip_joke_minutes, 0) + COALESCE(i.inventory_joke_minutes, 0)) AS carrying_cost,
+	       COALESCE(s.batches_submitted, 0)                                   AS batches_submitted,
+	       COALESCE(sh.shipping_cost, 0)                                      AS shipping_cost,
+	       c.storage_fee_per_joke_minute * COALESCE(w.wip_joke_minutes, 0)       AS storage_cost,
+	       c.hosting_fee_per_joke_minute * COALESCE(i.inventory_joke_minutes, 0) AS hosting_cost,
 	       COALESCE(w.wip_joke_minutes, 0)            AS wip_joke_minutes,
 	       COALESCE(i.inventory_joke_minutes, 0)      AS inventory_joke_minutes,
 	       COALESCE(w.avg_submit_to_publish_s, 0)     AS avg_submit_to_publish_s,
@@ -100,6 +116,7 @@ lean AS (
 	FROM team_rounds_state trs
 	CROSS JOIN cfg c
 	LEFT JOIN submitted s ON s.team_id = trs.team_id
+	LEFT JOIN shipping sh ON sh.team_id = trs.team_id
 	LEFT JOIN wip w       ON w.team_id = trs.team_id
 	LEFT JOIN inventory i ON i.team_id = trs.team_id
 	WHERE trs.round_id = $1
@@ -117,8 +134,10 @@ profits AS (
 	       (SELECT market_price FROM cfg) * trs.points_earned::float8
 	         - (SELECT cost_of_publishing FROM cfg) * trs.published_jokes::float8
 	         - (SELECT cost_of_discard FROM cfg) * trs.discarded_jokes::float8
-	         - l.setup_cost - l.carrying_cost AS profit,
-	       l.batches_submitted, l.setup_cost, l.carrying_cost,
+	         - l.shipping_cost - l.storage_cost - l.hosting_cost AS profit,
+	       l.batches_submitted, l.shipping_cost, l.storage_cost, l.hosting_cost,
+	       l.shipping_cost                  AS setup_cost,
+	       l.storage_cost + l.hosting_cost  AS carrying_cost,
 	       l.wip_joke_minutes, l.inventory_joke_minutes,
 	       l.avg_submit_to_publish_s, l.avg_publish_to_first_sale_s
 	FROM team_rounds_state trs
@@ -153,7 +172,7 @@ func (r *Repositories) GetRoundStatsLean(ctx context.Context, roundID int64) (*p
 			DENSE_RANK() OVER (ORDER BY profit DESC) AS rnk,
 			team_id, team_name, batches_processed, total_sales,
 			published_jokes, discarded_jokes, total_jokes, unsold_jokes, profit,
-			batches_submitted, setup_cost, carrying_cost,
+			batches_submitted, shipping_cost, storage_cost, hosting_cost, setup_cost, carrying_cost,
 			avg_submit_to_publish_s, avg_publish_to_first_sale_s
 		FROM profits
 		ORDER BY profit DESC, team_id`, roundID)
@@ -168,7 +187,8 @@ func (r *Repositories) GetRoundStatsLean(ctx context.Context, roundID int64) (*p
 		if err := rows.Scan(
 			&ts.Rank, &ts.Team.ID, &ts.Team.Name, &ts.BatchesProcessed, &ts.TotalSales,
 			&ts.PublishedJokes, &ts.DiscardedJokes, &ts.TotalJokes, &ts.UnsoldJokes, &ts.Profit,
-			&ts.Lean.BatchesSubmitted, &ts.Lean.SetupCost, &ts.Lean.CarryingCost,
+			&ts.Lean.BatchesSubmitted, &ts.Lean.ShippingCost, &ts.Lean.StorageCost, &ts.Lean.HostingCost,
+			&ts.Lean.SetupCost, &ts.Lean.CarryingCost,
 			&ts.Lean.AvgSubmitToPublishS, &ts.Lean.AvgPublishToFirstSaleS,
 		); err != nil {
 			return nil, err
@@ -192,7 +212,7 @@ func (r *Repositories) GetRoundStatsLean(ctx context.Context, roundID int64) (*p
 }
 
 // GetTeamSummaryLean mirrors GetTeamSummary's output columns and scan order,
-// with Lean profit and rank, and appends the five Lean columns. Like the
+// with Lean profit and rank, and appends the Lean columns. Like the
 // Classic query it returns zeros for a team with no team_rounds_state row.
 func (r *Repositories) GetTeamSummaryLean(ctx context.Context, roundID, teamID int64) (*ports.TeamSummary, error) {
 	q := leanTeamCTE + `,
@@ -220,6 +240,9 @@ func (r *Repositories) GetTeamSummaryLean(ctx context.Context, roundID, teamID i
 		       COALESCE(p.total_jokes, 0),
 		       COALESCE(p.published_jokes, 0),
 		       COALESCE(p.batches_submitted, 0),
+		       COALESCE(p.shipping_cost, 0),
+		       COALESCE(p.storage_cost, 0),
+		       COALESCE(p.hosting_cost, 0),
 		       COALESCE(p.setup_cost, 0),
 		       COALESCE(p.carrying_cost, 0),
 		       COALESCE(p.avg_submit_to_publish_s, 0),
@@ -236,7 +259,8 @@ func (r *Repositories) GetTeamSummaryLean(ctx context.Context, roundID, teamID i
 		&summary.BatchesCreated, &summary.BatchesProcessed, &summary.PublishedJokes, &summary.DiscardedJokes,
 		&summary.UnsoldJokes, &summary.SoldJokesCount, &summary.UnprocessedBatches,
 		&summary.JokesCreated, &summary.JokesPublished,
-		&summary.Lean.BatchesSubmitted, &summary.Lean.SetupCost, &summary.Lean.CarryingCost,
+		&summary.Lean.BatchesSubmitted, &summary.Lean.ShippingCost, &summary.Lean.StorageCost, &summary.Lean.HostingCost,
+		&summary.Lean.SetupCost, &summary.Lean.CarryingCost,
 		&summary.Lean.AvgSubmitToPublishS, &summary.Lean.AvgPublishToFirstSaleS,
 	)
 	if err != nil {

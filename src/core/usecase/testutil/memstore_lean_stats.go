@@ -65,11 +65,14 @@ func (st *Store) leanStats(rd *domain.Round) map[int64]*ports.LeanTeamStats {
 		// CreateBatch is the only writer of batches and of +1 events (one each),
 		// and the -1 events written on processing are not submits.
 		a.stats.BatchesSubmitted++
+		// shipping: the fee for the batch's size; an unsplit batch ships as 5.
+		a.stats.ShippingCost += domain.ShippingFeeFor(len(b.Jokes),
+			rd.ShippingFeeSmall, rd.ShippingFeeStandard, rd.ShippingFeeLarge)
 
-		// wip: jokes (batch_size when unsplit) × minutes submitted → processed/clock end.
+		// wip: jokes (5 while unsplit) × minutes submitted → processed/clock end.
 		jokes := len(b.Jokes)
 		if jokes == 0 {
-			jokes = rd.BatchSize
+			jokes = domain.StandardShipmentJokes
 		}
 		end := clockEnd
 		if b.ProcessedAt != nil {
@@ -97,8 +100,10 @@ func (st *Store) leanStats(rd *domain.Round) map[int64]*ports.LeanTeamStats {
 	out := make(map[int64]*ports.LeanTeamStats, len(byTeam))
 	for teamID, a := range byTeam {
 		s := a.stats
-		s.SetupCost = float64(s.BatchesSubmitted) * rd.SetupCostPerBatch
-		s.CarryingCost = rd.CarryingCostPerJokeMinute * (a.wipMin + a.invMin)
+		s.StorageCost = rd.StorageFeePerJokeMinute * a.wipMin
+		s.HostingCost = rd.HostingFeePerJokeMinute * a.invMin
+		s.SetupCost = s.ShippingCost
+		s.CarryingCost = s.StorageCost + s.HostingCost
 		if a.submitCount > 0 {
 			s.AvgSubmitToPublishS = a.submitSum / float64(a.submitCount)
 		}
@@ -134,12 +139,12 @@ func emptyLean() *ports.LeanTeamStats {
 	return &ports.LeanTeamStats{BatchSeries: []ports.BatchPoint{}}
 }
 
-// leanProfit is the Classic profit minus setup and carrying costs.
+// leanProfit is the Classic profit minus the shipping, storage and hosting fees.
 func leanProfit(rd *domain.Round, s *domain.TeamRoundState, lean *ports.LeanTeamStats) float64 {
 	return rd.MarketPrice*float64(s.PointsEarned) -
 		rd.CostOfPublishing*float64(s.PublishedJokes) -
 		rd.CostOfDiscard*float64(s.DiscardedJokes) -
-		lean.SetupCost - lean.CarryingCost
+		lean.ShippingCost - lean.StorageCost - lean.HostingCost
 }
 
 // leanDenseRanks ranks every team of the round by Lean profit, DENSE_RANK style.

@@ -24,14 +24,15 @@ func lcAtPtr(s float64) *time.Time {
 func lcNear(got, want float64) bool { return math.Abs(got-want) < 1e-9 }
 
 // lcRound is a started LEAN round: window 900 s (one sample a minute), batch
-// size 5, setup $3, carrying $0.02/joke-min, publishing $0.10, discard $0.01,
-// WIP limit 2.
+// size 5, storage and hosting $0.02/joke-min, publishing $0.10, discard $0.01,
+// WIP limit 2. Shipping comes from each team row's ShippingCost.
 func lcRound() *domain.Round {
 	start := lcStart
 	return &domain.Round{
 		ID: 7, MarketMode: domain.MarketLean, BatchSize: 5, MarketPrice: 1,
-		CostOfPublishing: 0.10, CostOfDiscard: 0.01, SetupCostPerBatch: 3,
-		CarryingCostPerJokeMinute: 0.02, ArrivalWindowSeconds: 900, WIPLimit: 2,
+		CostOfPublishing: 0.10, CostOfDiscard: 0.01,
+		StorageFeePerJokeMinute: 0.02, HostingFeePerJokeMinute: 0.02,
+		ArrivalWindowSeconds: 900, WIPLimit: 2,
 		StartedAt: &start,
 	}
 }
@@ -69,7 +70,7 @@ func TestBuildLeanChartsWasteMatchesTheLeaderboardFormula(t *testing.T) {
 	rows := &ports.LeanChartRows{
 		ClockEnd: lcAt(16 * 60),
 		Teams: []ports.LeanChartTeamRow{{
-			TeamID: 1, TeamName: "Team 1", BatchesSubmitted: 1, DiscardedJokes: 2,
+			TeamID: 1, TeamName: "Team 1", BatchesSubmitted: 1, DiscardedJokes: 2, ShippingCost: 3,
 			WIPJokeMinutes: 30, InventoryJokeMinutes: 24,
 		}},
 		Batches: []ports.LeanChartBatchRow{{
@@ -88,8 +89,8 @@ func TestBuildLeanChartsWasteMatchesTheLeaderboardFormula(t *testing.T) {
 		!lcNear(got.NeverSold, want.NeverSold) || !lcNear(got.Discarded, want.Discarded) || !lcNear(got.Total, want.Total) {
 		t.Fatalf("waste %+v; want %+v", got, want)
 	}
-	// The leaderboard's setup_cost + carrying_cost for the same rows.
-	if !lcNear(got.Setup+got.Waiting+got.Shelf, 3+0.02*(30+24)) {
+	// The leaderboard's shipping + storage + hosting for the same rows.
+	if !lcNear(got.Setup+got.Waiting+got.Shelf, 3+0.02*30+0.02*24) {
 		t.Fatalf("setup+waiting+shelf %.4f; want the leaderboard's 4.08", got.Setup+got.Waiting+got.Shelf)
 	}
 }
@@ -121,20 +122,23 @@ func TestBuildLeanChartsIdleCountsAtSampleBoundaries(t *testing.T) {
 	}
 }
 
-// Review focus 2.
-func TestBuildLeanChartsUnsplitBatchCountsBatchSize(t *testing.T) {
+// Review focus 2: an unsplit batch counts 5 jokes even in a round whose
+// batch_size is 10.
+func TestBuildLeanChartsUnsplitBatchCountsFiveJokes(t *testing.T) {
 	rows := &ports.LeanChartRows{
 		ClockEnd: lcAt(120),
-		Teams:    []ports.LeanChartTeamRow{{TeamID: 1, TeamName: "Team 1", BatchesSubmitted: 1, WIPJokeMinutes: 10}},
+		Teams:    []ports.LeanChartTeamRow{{TeamID: 1, TeamName: "Team 1", BatchesSubmitted: 1, ShippingCost: 2, WIPJokeMinutes: 10}},
 		Batches:  []ports.LeanChartBatchRow{{BatchID: 1, TeamID: 1, SubmittedAt: lcAt(0)}},
 	}
-	team := BuildLeanCharts(lcRound(), rows).Teams[0]
+	round := lcRound()
+	round.BatchSize = 10
+	team := BuildLeanCharts(round, rows).Teams[0]
 	if len(team.Idle) != 3 {
 		t.Fatalf("idle %+v; want 3 samples", team.Idle)
 	}
 	for _, s := range team.Idle {
 		if s.Waiting != 5 || s.Shelf != 0 {
-			t.Fatalf("idle %+v; an unsplit batch waits as batch_size (5) jokes", team.Idle)
+			t.Fatalf("idle %+v; an unsplit batch waits as 5 jokes, not batch_size 10", team.Idle)
 		}
 	}
 	b := team.Batches[0]
@@ -181,8 +185,8 @@ func TestBuildLeanChartsClassAverageIncludesTeamsWithNoBatches(t *testing.T) {
 	rows := &ports.LeanChartRows{
 		ClockEnd: lcAt(60),
 		Teams: []ports.LeanChartTeamRow{
-			{TeamID: 1, TeamName: "Team 1", BatchesSubmitted: 1, WIPJokeMinutes: 1},
-			{TeamID: 2, TeamName: "Team 2", BatchesSubmitted: 2, WIPJokeMinutes: 2},
+			{TeamID: 1, TeamName: "Team 1", BatchesSubmitted: 1, ShippingCost: 3, WIPJokeMinutes: 1},
+			{TeamID: 2, TeamName: "Team 2", BatchesSubmitted: 2, ShippingCost: 6, WIPJokeMinutes: 2},
 			{TeamID: 3, TeamName: "Team 3"},
 		},
 		Batches: []ports.LeanChartBatchRow{

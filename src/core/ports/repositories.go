@@ -93,10 +93,19 @@ type LeanTeamStats struct {
 	// BatchesSubmitted counts submits (+1 batch_submission_events), not the
 	// -1 events that record processing.
 	BatchesSubmitted int `json:"batches_submitted"`
-	// SetupCost is BatchesSubmitted × setup_cost_per_batch.
+	// ShippingCost is the sum over sent batches of the shipping fee for the
+	// batch's size (domain.ShippingFeeFor; an unsplit batch ships as 5).
+	ShippingCost float64 `json:"shipping_cost"`
+	// StorageCost is storage_fee_per_joke_minute × WIP joke-minutes (jokes
+	// waiting on Marketing's desk; an unsplit batch counts 5 jokes).
+	StorageCost float64 `json:"storage_cost"`
+	// HostingCost is hosting_fee_per_joke_minute × inventory joke-minutes
+	// (released jokes waiting for their first sale).
+	HostingCost float64 `json:"hosting_cost"`
+	// SetupCost is an alias of ShippingCost, kept for older frontends.
 	SetupCost float64 `json:"setup_cost"`
-	// CarryingCost is carrying_cost_per_joke_minute × (WIP joke-minutes +
-	// unsold-inventory joke-minutes).
+	// CarryingCost is an alias of StorageCost + HostingCost, kept for older
+	// frontends.
 	CarryingCost           float64      `json:"carrying_cost"`
 	AvgSubmitToPublishS    float64      `json:"avg_submit_to_publish_s"`
 	AvgPublishToFirstSaleS float64      `json:"avg_publish_to_first_sale_s"`
@@ -127,13 +136,15 @@ type RoundStats struct {
 }
 
 // LeanChartTeamRow is one team of a round (a team_rounds_state row) with the
-// per-team totals the lean charts read from leanTeamCTE. WIPJokeMinutes and
-// InventoryJokeMinutes are the two halves of the Lean carrying cost.
+// per-team totals the lean charts read from leanTeamCTE. ShippingCost is the
+// leaderboard's shipping_cost; WIPJokeMinutes and InventoryJokeMinutes price
+// the storage and hosting fees.
 type LeanChartTeamRow struct {
 	TeamID               int64
 	TeamName             string
 	BatchesSubmitted     int
 	DiscardedJokes       int
+	ShippingCost         float64
 	WIPJokeMinutes       float64
 	InventoryJokeMinutes float64
 }
@@ -263,7 +274,7 @@ type StatsRepository interface {
 	// ListTeamFeedbackJokes returns the latest limit published jokes for a team
 	// (newest first), each with dim_fits and whether any AI customer bought it.
 	ListTeamFeedbackJokes(ctx context.Context, roundID, teamID int64, limit int) ([]FeedbackJokeRow, error)
-	// Lean variants compute setup and carrying costs at read time and fold
+	// Lean variants compute shipping, storage and hosting fees at read time and fold
 	// them into profit. The Classic queries above are not touched.
 	GetRoundStatsLean(ctx context.Context, roundID int64) (*RoundStats, error)
 	GetTeamSummaryLean(ctx context.Context, roundID, teamID int64) (*TeamSummary, error)
