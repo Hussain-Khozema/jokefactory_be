@@ -370,11 +370,13 @@ func (s *InstructorService) StartRound(ctx context.Context, roundID int64) (*dom
 		return nil, domain.NewConflictError("ideal_profile must be configured before start")
 	}
 
-	round, err = s.repo.StartRound(ctx, roundID)
-	if err != nil {
+	// Size the market while the round is still CONFIGURED: if sizing fails the
+	// round has not started and can be started again.
+	if err := s.sizeLeanMarket(ctx, round); err != nil {
 		return nil, err
 	}
-	round, err = s.sizeLeanMarket(ctx, round)
+	// StartRound returns the row as stored, so it carries the sized count.
+	round, err = s.repo.StartRound(ctx, roundID)
 	if err != nil {
 		return nil, err
 	}
@@ -389,27 +391,29 @@ func (s *InstructorService) StartRound(ctx context.Context, roundID int64) (*dom
 // sizeLeanMarket gives a LEAN round with customers_per_team > 0 a
 // customer_count of customers_per_team × T, T being the teams with at least
 // one participant assigned as JM or MARKETING right now (the lobby's teams;
-// at least 1). The count is stored before any customer is generated, so the
-// instructor screens and stats show the real number. CLASSIC rounds, and
+// at least 1). StartRound calls it before the round leaves CONFIGURED, and
+// the count is stored before any customer is generated, so the instructor
+// screens and stats show the real number. CLASSIC rounds, and
 // customers_per_team 0, keep the configured customer_count.
-func (s *InstructorService) sizeLeanMarket(ctx context.Context, round *domain.Round) (*domain.Round, error) {
+func (s *InstructorService) sizeLeanMarket(ctx context.Context, round *domain.Round) error {
 	if round.MarketMode != domain.MarketLean || round.CustomersPerTeam <= 0 {
-		return round, nil
+		return nil
 	}
 	lobby, err := s.repo.GetLobby(ctx, round.ID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	teams := max(lobby.Summary.TeamCount, 1)
 	count := round.CustomersPerTeam * teams
 	if count == round.CustomerCount {
-		return round, nil
+		return nil
 	}
 	cfg := domain.ConfigFromRound(round)
 	cfg.CustomerCount = count
 	s.log.Info("lean market sized", "round_id", round.ID, "customers_per_team", round.CustomersPerTeam,
 		"teams", teams, "customer_count", count)
-	return s.repo.UpdateRoundConfig(ctx, round.ID, &cfg)
+	_, err = s.repo.UpdateRoundConfig(ctx, round.ID, &cfg)
+	return err
 }
 
 func (s *InstructorService) EndRound(ctx context.Context, roundID int64) (*domain.Round, error) {

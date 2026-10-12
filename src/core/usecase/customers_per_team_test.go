@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"jokefactory/src/core/domain"
+	"jokefactory/src/core/ports"
 	"jokefactory/src/core/usecase"
 	"jokefactory/src/core/usecase/testutil"
 )
@@ -171,5 +172,50 @@ func TestMergeConfigCustomersPerTeam(t *testing.T) {
 	zero := 0
 	if got := usecase.MergeConfig(&base, &usecase.PartialRoundConfig{CustomersPerTeam: &zero}); got.CustomersPerTeam != 0 {
 		t.Fatalf("customers_per_team %d; want 0", got.CustomersPerTeam)
+	}
+}
+
+// lobbyFailingStore fails GetLobby, the read StartRound uses to size the market.
+type lobbyFailingStore struct{ *testutil.Store }
+
+func (lobbyFailingStore) GetLobby(context.Context, int64) (*ports.LobbySnapshot, error) {
+	return nil, errors.New("lobby unavailable")
+}
+
+// If sizing the market fails, the round has not started: it stays
+// CONFIGURED with no customers and can be started again once the lobby reads.
+func TestStartRoundSizingFailureLeavesRoundConfigured(t *testing.T) {
+	ctx := context.Background()
+	st := testutil.NewStore()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	failing := lobbyFailingStore{st}
+	instructor := usecase.NewInstructorService(failing, usecase.NewAICustomerService(failing, rand.New(rand.NewSource(1)), log), log) //nolint:gosec
+	cfg := domain.DefaultRoundConfig()
+	if _, err := instructor.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := instructor.StartRound(ctx, 1); err == nil {
+		t.Fatal("StartRound succeeded although the lobby could not be read")
+	}
+	rd, err := st.GetRoundByID(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if customers, _ := st.ListAICustomers(ctx, 1); rd.Status != domain.RoundConfigured || rd.StartedAt != nil ||
+		len(customers) != 0 || rd.CustomerCount != domain.DefaultCustomerCount {
+		t.Fatalf("after a failed sizing: status %s, started_at %v, %d customers, customer_count %d; want CONFIGURED, nil, 0, %d",
+			rd.Status, rd.StartedAt, len(customers), rd.CustomerCount, domain.DefaultCustomerCount)
+	}
+
+	// The same round starts normally with a working store.
+	ok := usecase.NewInstructorService(st, usecase.NewAICustomerService(st, rand.New(rand.NewSource(1)), log), log) //nolint:gosec
+	round, err := ok.StartRound(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if customers, _ := st.ListAICustomers(ctx, 1); round.Status != domain.RoundActive ||
+		round.CustomerCount != domain.DefaultCustomersPerTeam || len(customers) != domain.DefaultCustomersPerTeam {
+		t.Fatalf("restart: status %s, customer_count %d, %d customers; want ACTIVE, 18, 18",
+			round.Status, round.CustomerCount, len(customers))
 	}
 }
