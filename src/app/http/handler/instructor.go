@@ -194,6 +194,7 @@ func partialConfig(req *dto.ConfigRequest) *usecase.PartialRoundConfig {
 		ShippingFeeLarge:          req.ShippingFeeLarge,
 		StorageFeePerJokeMinute:   req.StorageFeePerJokeMinute,
 		HostingFeePerJokeMinute:   req.HostingFeePerJokeMinute,
+		CustomersPerTeam:          req.CustomersPerTeam,
 	}
 }
 
@@ -220,6 +221,7 @@ func hasConfigFields(req *dto.ConfigRequest) bool {
 		req.ShippingFeeLarge != nil ||
 		req.StorageFeePerJokeMinute != nil ||
 		req.HostingFeePerJokeMinute != nil ||
+		req.CustomersPerTeam != nil ||
 		req.IdealProfile != nil
 }
 

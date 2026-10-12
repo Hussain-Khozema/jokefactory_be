@@ -92,6 +92,10 @@ type ConfigRequest struct {
 	ShippingFeeLarge        *float64 `json:"shipping_fee_large"`
 	StorageFeePerJokeMinute *float64 `json:"storage_fee_per_joke_minute"`
 	HostingFeePerJokeMinute *float64 `json:"hosting_fee_per_joke_minute"`
+
+	// CustomersPerTeam (0-1000): at start a LEAN round gets this many
+	// customers per staffed team; 0 keeps customer_count. Locked once started.
+	CustomersPerTeam *int `json:"customers_per_team"`
 }
 
 // IdealProfileToDomain converts a string-keyed map to domain.IdealProfile.

@@ -15,7 +15,8 @@ const roundColumns = `round_id, round_number, status, customer_budget, batch_siz
 	market_mode, arrival_window_seconds, setup_cost_per_batch,
 	carrying_cost_per_joke_minute, wip_limit, preference_base,
 	shipping_fee_small, shipping_fee_standard, shipping_fee_large,
-	storage_fee_per_joke_minute, hosting_fee_per_joke_minute`
+	storage_fee_per_joke_minute, hosting_fee_per_joke_minute,
+	customers_per_team`
 
 type scannable interface {
 	Scan(dest ...any) error
@@ -32,6 +33,7 @@ func scanRound(row scannable) (*domain.Round, error) {
 		&rd.CarryingCostPerJokeMinute, &rd.WIPLimit, &rd.PreferenceBase,
 		&rd.ShippingFeeSmall, &rd.ShippingFeeStandard, &rd.ShippingFeeLarge,
 		&rd.StorageFeePerJokeMinute, &rd.HostingFeePerJokeMinute,
+		&rd.CustomersPerTeam,
 	)
 	if err != nil {
 		return nil, err

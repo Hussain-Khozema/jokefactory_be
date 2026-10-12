@@ -12,11 +12,11 @@ func TestDefaultRoundConfigIsTheLeanRuleSet(t *testing.T) {
 		t.Fatalf("shipping fees %v / %v / %v; want 1 / 2 / 3",
 			cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge)
 	}
-	if cfg.StorageFeePerJokeMinute != 0.10 || cfg.HostingFeePerJokeMinute != 0.05 {
-		t.Fatalf("storage %v, hosting %v; want 0.10, 0.05", cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute)
+	if cfg.StorageFeePerJokeMinute != 0.05 || cfg.HostingFeePerJokeMinute != 0.05 {
+		t.Fatalf("storage %v, hosting %v; want 0.05, 0.05", cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute)
 	}
-	if cfg.WIPLimit != 0 || cfg.PreferenceBase != 3 || cfg.CustomerCount != 150 || cfg.ArrivalWindowSeconds != 900 {
-		t.Fatalf("wip %d, preference base %v, customers %d, window %d; want 0, 3, 150, 900",
+	if cfg.WIPLimit != 0 || cfg.PreferenceBase != 5 || cfg.CustomerCount != 150 || cfg.ArrivalWindowSeconds != 900 {
+		t.Fatalf("wip %d, preference base %v, customers %d, window %d; want 0, 5, 150, 900",
 			cfg.WIPLimit, cfg.PreferenceBase, cfg.CustomerCount, cfg.ArrivalWindowSeconds)
 	}
 	if cfg.BatchSize != 5 {

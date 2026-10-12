@@ -29,6 +29,10 @@ type RoundConfig struct {
 	ShippingFeeLarge        float64
 	StorageFeePerJokeMinute float64
 	HostingFeePerJokeMinute float64
+
+	// CustomersPerTeam > 0 makes a LEAN round's customer_count, at start,
+	// CustomersPerTeam × the teams staffed then; 0 keeps CustomerCount.
+	CustomersPerTeam int
 }
 
 // IdealProfile maps each selectable dimension to its ideal category.
@@ -64,6 +68,8 @@ func DefaultRoundConfig() RoundConfig {
 		ShippingFeeLarge:        DefaultShippingFeeLarge,
 		StorageFeePerJokeMinute: DefaultStorageFeePerJokeMinute,
 		HostingFeePerJokeMinute: DefaultHostingFeePerJokeMinute,
+
+		CustomersPerTeam: DefaultCustomersPerTeam,
 	}
 }
 
@@ -97,5 +103,7 @@ func ConfigFromRound(r *Round) RoundConfig {
 		ShippingFeeLarge:        r.ShippingFeeLarge,
 		StorageFeePerJokeMinute: r.StorageFeePerJokeMinute,
 		HostingFeePerJokeMinute: r.HostingFeePerJokeMinute,
+
+		CustomersPerTeam: r.CustomersPerTeam,
 	}
 }

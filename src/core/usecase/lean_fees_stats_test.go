@@ -13,7 +13,8 @@ import (
 	"jokefactory/src/core/usecase/testutil"
 )
 
-// feesFixture is a running Round 2 (batch_size 10) at the default fees
+// feesFixture is a running Round 2 (batch_size 10) at the default fees, with
+// storage pinned at the old default $0.10 so the arithmetic below holds
 // ($1 / $2 / $3 shipping, storage $0.10 and hosting $0.05 per joke-minute,
 // price $1, listing $0.10, discard $0.01), read at T+30min:
 //
@@ -32,6 +33,7 @@ func feesFixture(t *testing.T) (*testutil.Store, *domain.Round) {
 	st := testutil.NewStore()
 	st.Teams = []domain.Team{{ID: 1, Name: "Team 1"}, {ID: 2, Name: "Team 2"}}
 	cfg := domain.DefaultRoundConfigFor(2)
+	cfg.StorageFeePerJokeMinute = 0.10
 	if _, err := st.InsertRoundConfig(ctx, 2, &cfg); err != nil {
 		t.Fatal(err)
 	}

@@ -192,6 +192,14 @@ Rollback: if the backend image is rolled back, do NOT run `migrate-down`. The ol
 
 Rollback: do NOT run `migrate-down`; the old image ignores the new columns.
 
+### Deploying the tuned defaults and customers per team (migration 0006)
+
+1. Migrate first: `DB_DSN=<DSN> make migrate-up`, then `DB_DSN=<DSN> make migrate-status` and confirm `0006_customers_per_team.sql` is Applied. The new backend reads `rounds.customers_per_team` on every round query, so it fails until 0006 is applied.
+2. Then deploy the backend, and press **Reset Game** before the next class: rounds written before 0006 keep their stored settings and `customers_per_team` 0 (a fixed `customer_count`) until they are reset to the new defaults (storage $0.05 per joke-minute, buy threshold 8, preference base 5, 18 customers per team).
+3. Deploy the frontend last. An older frontend keeps working: it never sends `customers_per_team`, so the stored value (18 after Reset Game) applies, and a LEAN round's `customer_count` becomes 18 × the staffed teams at start.
+
+Rollback: do NOT run `migrate-down`; the old image ignores the new column (and then uses the stored `customer_count`).
+
 ## Make targets
 
 ```bash

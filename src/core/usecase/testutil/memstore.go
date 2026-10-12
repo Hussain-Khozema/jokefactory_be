@@ -1282,6 +1282,7 @@ func applyConfig(r *domain.Round, cfg *domain.RoundConfig) {
 	r.ShippingFeeLarge = cfg.ShippingFeeLarge
 	r.StorageFeePerJokeMinute = cfg.StorageFeePerJokeMinute
 	r.HostingFeePerJokeMinute = cfg.HostingFeePerJokeMinute
+	r.CustomersPerTeam = cfg.CustomersPerTeam
 }
 
 func cloneUser(u *domain.User) *domain.User {

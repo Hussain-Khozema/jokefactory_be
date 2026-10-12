@@ -34,7 +34,7 @@ func TestLoginAndResetGiveRound1FiveAndRound2Ten(t *testing.T) {
 				t.Fatalf("%s: round %d: %v", when, want.id, err)
 			}
 			if rd.BatchSize != want.batchSize || rd.Status != domain.RoundConfigured || rd.MarketMode != domain.MarketLean ||
-				rd.ShippingFeeStandard != 2 || rd.StorageFeePerJokeMinute != 0.10 || rd.HostingFeePerJokeMinute != 0.05 ||
+				rd.ShippingFeeStandard != 2 || rd.StorageFeePerJokeMinute != 0.05 || rd.HostingFeePerJokeMinute != 0.05 ||
 				rd.StartedAt != nil {
 				t.Fatalf("%s: round %d = %+v; want CONFIGURED LEAN, batch size %d, default fees",
 					when, want.id, rd, want.batchSize)
@@ -140,10 +140,13 @@ func startedDefaultRound(t *testing.T, svc *usecase.InstructorService) domain.Ro
 	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.StartRound(ctx, 1); err != nil {
+	started, err := svc.StartRound(ctx, 1)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return cfg
+	// The start sized the market (customers_per_team × 1 team): the round's
+	// config from here on is what was stored at the start.
+	return domain.ConfigFromRound(started)
 }
 
 func TestConfigLocksLeanFeesOnceStarted(t *testing.T) {
@@ -157,6 +160,7 @@ func TestConfigLocksLeanFeesOnceStarted(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, svc := newLeanConfigInstructor()
 			cfg := startedDefaultRound(t, svc)
+			want := cfg
 			mutate(&cfg)
 			_, err := svc.Config(context.Background(), 1, &cfg, nil)
 			var de *domain.DomainError
@@ -167,7 +171,7 @@ func TestConfigLocksLeanFeesOnceStarted(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := domain.ConfigFromRound(rd); got != domain.DefaultRoundConfig() {
+			if got := domain.ConfigFromRound(rd); got != want {
 				t.Fatalf("a rejected fee change was written: %+v", got)
 			}
 		})
@@ -179,7 +183,7 @@ func TestConfigAllowsResendingSameLeanFeesOnceStarted(t *testing.T) {
 	cfg := startedDefaultRound(t, svc)
 	// Values that round to the stored scale are the same values.
 	cfg.ShippingFeeStandard = 2.000001
-	cfg.StorageFeePerJokeMinute = 0.100000001
+	cfg.StorageFeePerJokeMinute = 0.050000001
 	cfg.MarketPrice = 2
 	if _, err := svc.Config(context.Background(), 1, &cfg, nil); err != nil {
 		t.Fatalf("resending the same fees on an ACTIVE round: %v", err)

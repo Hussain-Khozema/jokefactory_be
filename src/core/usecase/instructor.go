@@ -82,7 +82,8 @@ func (s *InstructorService) Config(ctx context.Context, roundID int64, cfg *doma
 }
 
 // checkStartedRoundLock refuses, once a round has left CONFIGURED, to change
-// market_mode or (for a LEAN round) any lean setting, the five fees included.
+// market_mode or (for a LEAN round) any lean setting, the five fees and
+// customers_per_team included.
 // Lean customers get arrival times only in StartRound, so a mode switch
 // mid-round would strand them (to LEAN) or make them all shop at once (to
 // CLASSIC); and the fees are read at stats time, so changing them later would
@@ -129,7 +130,8 @@ func leanSettingsChanged(r *domain.Round, cfg *domain.RoundConfig) bool {
 		!sameAtScale(r.ShippingFeeStandard, cfg.ShippingFeeStandard, 100) ||
 		!sameAtScale(r.ShippingFeeLarge, cfg.ShippingFeeLarge, 100) ||
 		!sameAtScale(r.StorageFeePerJokeMinute, cfg.StorageFeePerJokeMinute, 10000) ||
-		!sameAtScale(r.HostingFeePerJokeMinute, cfg.HostingFeePerJokeMinute, 10000)
+		!sameAtScale(r.HostingFeePerJokeMinute, cfg.HostingFeePerJokeMinute, 10000) ||
+		r.CustomersPerTeam != cfg.CustomersPerTeam
 }
 
 func sameAtScale(a, b, scale float64) bool {
@@ -186,6 +188,10 @@ func validateLeanConfig(cfg *domain.RoundConfig) error {
 	if err := validateLeanFees(cfg); err != nil {
 		return err
 	}
+	// 0 means "use the fixed customer_count".
+	if cfg.CustomersPerTeam < 0 || cfg.CustomersPerTeam > maxCustomersPerTeam {
+		return domain.NewValidationError("customers_per_team", "must be between 0 and 1000 (0 means use customer_count)")
+	}
 	// The column is NUMERIC(6,2) CHECK > 1: validate the value Postgres will
 	// store, so 1.001 (stored as 1.00) is a 400 rather than a DB error.
 	if math.Round(cfg.PreferenceBase*100)/100 <= 1 {
@@ -193,6 +199,10 @@ func validateLeanConfig(cfg *domain.RoundConfig) error {
 	}
 	return nil
 }
+
+// maxCustomersPerTeam caps customers_per_team so a large class cannot ask for
+// an unbounded number of AI customers.
+const maxCustomersPerTeam = 1000
 
 // validateLeanFees checks the five Lean fees: none negative, and a bigger
 // shipment never ships for less (small <= standard <= large).
@@ -364,12 +374,42 @@ func (s *InstructorService) StartRound(ctx context.Context, roundID int64) (*dom
 	if err != nil {
 		return nil, err
 	}
+	round, err = s.sizeLeanMarket(ctx, round)
+	if err != nil {
+		return nil, err
+	}
 	if s.aiCustomers != nil {
 		if err := s.aiCustomers.GenerateCustomers(ctx, round); err != nil {
 			return nil, err
 		}
 	}
 	return round, nil
+}
+
+// sizeLeanMarket gives a LEAN round with customers_per_team > 0 a
+// customer_count of customers_per_team × T, T being the teams with at least
+// one participant assigned as JM or MARKETING right now (the lobby's teams;
+// at least 1). The count is stored before any customer is generated, so the
+// instructor screens and stats show the real number. CLASSIC rounds, and
+// customers_per_team 0, keep the configured customer_count.
+func (s *InstructorService) sizeLeanMarket(ctx context.Context, round *domain.Round) (*domain.Round, error) {
+	if round.MarketMode != domain.MarketLean || round.CustomersPerTeam <= 0 {
+		return round, nil
+	}
+	lobby, err := s.repo.GetLobby(ctx, round.ID)
+	if err != nil {
+		return nil, err
+	}
+	teams := max(lobby.Summary.TeamCount, 1)
+	count := round.CustomersPerTeam * teams
+	if count == round.CustomerCount {
+		return round, nil
+	}
+	cfg := domain.ConfigFromRound(round)
+	cfg.CustomerCount = count
+	s.log.Info("lean market sized", "round_id", round.ID, "customers_per_team", round.CustomersPerTeam,
+		"teams", teams, "customer_count", count)
+	return s.repo.UpdateRoundConfig(ctx, round.ID, &cfg)
 }
 
 func (s *InstructorService) EndRound(ctx context.Context, roundID int64) (*domain.Round, error) {
@@ -486,6 +526,9 @@ func MergeConfig(base *domain.RoundConfig, overlay *PartialRoundConfig) domain.R
 	if overlay.HostingFeePerJokeMinute != nil {
 		cfg.HostingFeePerJokeMinute = *overlay.HostingFeePerJokeMinute
 	}
+	if overlay.CustomersPerTeam != nil {
+		cfg.CustomersPerTeam = *overlay.CustomersPerTeam
+	}
 	return cfg
 }
 
@@ -517,4 +560,7 @@ type PartialRoundConfig struct {
 	ShippingFeeLarge        *float64
 	StorageFeePerJokeMinute *float64
 	HostingFeePerJokeMinute *float64
+
+	// CustomersPerTeam: nil keeps the existing value; 0 means fixed count.
+	CustomersPerTeam *int
 }

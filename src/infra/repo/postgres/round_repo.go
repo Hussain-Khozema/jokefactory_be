@@ -87,7 +87,8 @@ func (r *Repositories) UpdateRoundConfig(ctx context.Context, roundID int64, cfg
 		    shipping_fee_standard = $20,
 		    shipping_fee_large = $21,
 		    storage_fee_per_joke_minute = $22,
-		    hosting_fee_per_joke_minute = $23
+		    hosting_fee_per_joke_minute = $23,
+		    customers_per_team = $24
 		WHERE round_id = $1
 		RETURNING `+roundColumns, roundID,
 		cfg.CustomerBudget, cfg.BatchSize, cfg.MarketPrice, cfg.CostOfPublishing,
@@ -96,7 +97,7 @@ func (r *Repositories) UpdateRoundConfig(ctx context.Context, roundID int64, cfg
 		string(cfg.MarketMode), cfg.ArrivalWindowSeconds, cfg.SetupCostPerBatch,
 		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase,
 		cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge,
-		cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute))
+		cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute, cfg.CustomersPerTeam))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.NewNotFoundError("round")
@@ -124,10 +125,11 @@ func (r *Repositories) InsertRoundConfig(ctx context.Context, roundID int64, cfg
 			market_mode, arrival_window_seconds, setup_cost_per_batch,
 			carrying_cost_per_joke_minute, wip_limit, preference_base,
 			shipping_fee_small, shipping_fee_standard, shipping_fee_large,
-			storage_fee_per_joke_minute, hosting_fee_per_joke_minute
+			storage_fee_per_joke_minute, hosting_fee_per_joke_minute,
+			customers_per_team
 		)
 		VALUES ($1, $2, 'CONFIGURED', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-			$14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+			$14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		RETURNING `+roundColumns,
 		roundID, int(roundID),
 		cfg.CustomerBudget, cfg.BatchSize, cfg.MarketPrice, cfg.CostOfPublishing,
@@ -136,7 +138,7 @@ func (r *Repositories) InsertRoundConfig(ctx context.Context, roundID int64, cfg
 		string(cfg.MarketMode), cfg.ArrivalWindowSeconds, cfg.SetupCostPerBatch,
 		cfg.CarryingCostPerJokeMinute, cfg.WIPLimit, cfg.PreferenceBase,
 		cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge,
-		cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute))
+		cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute, cfg.CustomersPerTeam))
 }
 
 func (r *Repositories) UpsertIdealProfile(ctx context.Context, roundID int64, profile domain.IdealProfile) error {
@@ -289,6 +291,7 @@ func (r *Repositories) ResetGame(ctx context.Context) error {
 			    shipping_fee_large = $21,
 			    storage_fee_per_joke_minute = $22,
 			    hosting_fee_per_joke_minute = $23,
+			    customers_per_team = $24,
 			    started_at = NULL,
 			    ended_at = NULL,
 			    is_popped_active = FALSE`,
@@ -315,6 +318,7 @@ func (r *Repositories) ResetGame(ctx context.Context) error {
 			cfg.ShippingFeeLarge,
 			cfg.StorageFeePerJokeMinute,
 			cfg.HostingFeePerJokeMinute,
+			cfg.CustomersPerTeam,
 		); err != nil {
 			return err
 		}

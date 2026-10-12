@@ -50,6 +50,10 @@ type Round struct {
 	StorageFeePerJokeMinute float64
 	HostingFeePerJokeMinute float64
 
+	// CustomersPerTeam > 0: at StartRound a LEAN round's CustomerCount becomes
+	// CustomersPerTeam × the staffed teams. 0 keeps CustomerCount as set.
+	CustomersPerTeam int
+
 	StartedAt      *time.Time
 	EndedAt        *time.Time
 	CreatedAt      time.Time

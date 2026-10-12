@@ -47,6 +47,8 @@ type InstructorRound struct {
 	IdealProfile          map[string]string `json:"ideal_profile,omitempty"`
 	// PreferenceBase is instructor-only, like buy_threshold.
 	PreferenceBase float64 `json:"preference_base"`
+	// CustomersPerTeam is instructor-only: students see customer_count.
+	CustomersPerTeam int `json:"customers_per_team"`
 }
 
 // ToPublicRound maps a domain round for student endpoints.
@@ -95,5 +97,6 @@ func ToInstructorRound(rd *domain.Round, profile domain.IdealProfile) Instructor
 		FeedbackPassThreshold: rd.FeedbackPassThreshold,
 		IdealProfile:          IdealProfileFromDomain(profile),
 		PreferenceBase:        rd.PreferenceBase,
+		CustomersPerTeam:      rd.CustomersPerTeam,
 	}
 }
