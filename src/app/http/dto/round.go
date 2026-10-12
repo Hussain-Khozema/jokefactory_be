@@ -35,6 +35,10 @@ type PublicRound struct {
 	ShippingFeeLarge        float64 `json:"shipping_fee_large"`
 	StorageFeePerJokeMinute float64 `json:"storage_fee_per_joke_minute"`
 	HostingFeePerJokeMinute float64 `json:"hosting_fee_per_joke_minute"`
+
+	// CustomersPerTeam (0 = fixed customer_count). Not secret; on the public
+	// round so the instructor CONFIG screen can show the stored value.
+	CustomersPerTeam int `json:"customers_per_team"`
 }
 
 // InstructorRound includes engine knobs instructors may tune.
@@ -47,8 +51,6 @@ type InstructorRound struct {
 	IdealProfile          map[string]string `json:"ideal_profile,omitempty"`
 	// PreferenceBase is instructor-only, like buy_threshold.
 	PreferenceBase float64 `json:"preference_base"`
-	// CustomersPerTeam is instructor-only: students see customer_count.
-	CustomersPerTeam int `json:"customers_per_team"`
 }
 
 // ToPublicRound maps a domain round for student endpoints.
@@ -84,6 +86,8 @@ func ToPublicRound(rd *domain.Round) PublicRound {
 		ShippingFeeLarge:        rd.ShippingFeeLarge,
 		StorageFeePerJokeMinute: rd.StorageFeePerJokeMinute,
 		HostingFeePerJokeMinute: rd.HostingFeePerJokeMinute,
+
+		CustomersPerTeam: rd.CustomersPerTeam,
 	}
 }
 
@@ -97,6 +101,5 @@ func ToInstructorRound(rd *domain.Round, profile domain.IdealProfile) Instructor
 		FeedbackPassThreshold: rd.FeedbackPassThreshold,
 		IdealProfile:          IdealProfileFromDomain(profile),
 		PreferenceBase:        rd.PreferenceBase,
-		CustomersPerTeam:      rd.CustomersPerTeam,
 	}
 }

@@ -14,8 +14,9 @@ import (
 )
 
 // customers_per_team travels on the config request and the /start body, comes
-// back on the instructor round only (never on the students' public round), is
-// a 400 outside 0–1000, and is locked once the round has started.
+// back on the instructor round and on every public round (so a reloaded CONFIG
+// screen can show it), is a 400 outside 0–1000, and is locked once the round
+// has started.
 func TestCustomersPerTeamRoutes(t *testing.T) {
 	st := testutil.NewStore()
 	cfg := &config.Config{Admin: config.AdminConfig{AdminPassword: "pw"}}
@@ -56,8 +57,13 @@ func TestCustomersPerTeamRoutes(t *testing.T) {
 		t.Fatalf("rounds/active: %d %v", code, body)
 	}
 	for _, r := range body["data"].(map[string]any)["rounds"].([]any) {
-		if _, ok := r.(map[string]any)["customers_per_team"]; ok {
-			t.Errorf("public round carries customers_per_team: %v", r)
+		m := r.(map[string]any)
+		want := 18.0 // round 1: the default
+		if m["round_number"] == 2.0 {
+			want = 12 // round 2: as configured above
+		}
+		if m["customers_per_team"] != want {
+			t.Errorf("public round %v: customers_per_team %v; want %v", m["round_number"], m["customers_per_team"], want)
 		}
 	}
 
