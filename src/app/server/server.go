@@ -154,6 +154,7 @@ func (s *Server) setupRoutes() {
 		instructor.POST("/admin/reset", s.adminHandler.ResetGame)
 
 		instructor.GET("/instructor/rounds/:round_id/lobby", s.instructorHandler.Lobby)
+		instructor.GET("/instructor/rounds/:round_id/config", s.instructorHandler.GetConfig)
 		instructor.POST("/instructor/rounds/:round_id/config", s.instructorHandler.Config)
 		instructor.POST("/instructor/rounds/:round_id/assign", s.instructorHandler.Assign)
 		instructor.PATCH("/instructor/rounds/:round_id/users/:user_id", s.instructorHandler.PatchUser)

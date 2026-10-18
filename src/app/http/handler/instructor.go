@@ -76,6 +76,27 @@ func (h *InstructorHandler) Config(c *gin.Context) {
 	})
 }
 
+// GetConfig reads back the saved round and its ideal profile, in the same
+// shape Config returns. It writes nothing and does not fall back to defaults.
+func (h *InstructorHandler) GetConfig(c *gin.Context) {
+	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid round id", middleware.GetRequestID(c))
+		return
+	}
+	round, err := h.instructorService.GetRound(c.Request.Context(), roundID)
+	if err != nil {
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+	profile, err := h.instructorService.GetIdealProfile(c.Request.Context(), roundID)
+	if err != nil {
+		response.FromDomainError(c, err, middleware.GetRequestID(c))
+		return
+	}
+	response.OK(c, gin.H{"round": dto.ToInstructorRound(round, profile)})
+}
+
 func (h *InstructorHandler) Assign(c *gin.Context) {
 	roundID, err := strconv.ParseInt(c.Param("round_id"), 10, 64)
 	if err != nil {
