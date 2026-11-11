@@ -76,17 +76,18 @@ type LLMConfig struct {
 	MaxRetries int `envconfig:"LLM_MAX_RETRIES" default:"3"`
 
 	// Mode selects the classifier: "" = Azure when credentials exist, else the
-	// stub; "hash" = HashClassifier, for local pilots only. Any other value
+	// stub; "hash" = HashClassifier and "traits" = TraitClassifier (the trait
+	// corpus, hash for other text), both for local pilots only. Any other value
 	// fails startup.
 	Mode string `envconfig:"LLM_MODE" default:""`
 
-	// HashConfirm must equal HashConfirmValue for Mode "hash" to start, so the
-	// hash classifier (which does not grade jokes with the LLM) cannot be
+	// HashConfirm must equal HashConfirmValue for Mode "hash" or "traits" to
+	// start, so a classifier that does not grade jokes with the LLM cannot be
 	// switched on in production by a single stray variable.
 	HashConfirm string `envconfig:"LLM_HASH_CONFIRM" default:""`
 }
 
-// HashConfirmValue is the only APP_LLM_HASH_CONFIRM value that enables hash mode.
+// HashConfirmValue is the only APP_LLM_HASH_CONFIRM value that enables hash or traits mode.
 const HashConfirmValue = "local-pilot-only"
 
 // Enabled reports whether LLM credentials are configured.

@@ -16,9 +16,10 @@ services:
       APP_LOG_FORMAT: plain
       # No built-in default: export APP_ADMIN_PASSWORD to enable instructor login.
       APP_ADMIN_PASSWORD: "${APP_ADMIN_PASSWORD:-}"
-      # Set APP_LLM_MODE=hash for local pilots (deterministic hash classifier).
-      # Hash mode also needs APP_LLM_HASH_CONFIRM=local-pilot-only, or the server
-      # refuses to start: it does not grade jokes with the LLM.
+      # Set APP_LLM_MODE=hash (deterministic hash classifier) or traits (the
+      # trait corpus, hash for other text) for local pilots. Both also need
+      # APP_LLM_HASH_CONFIRM=local-pilot-only, or the server refuses to start:
+      # they do not grade jokes with the LLM.
       APP_LLM_MODE: "${APP_LLM_MODE:-}"
       APP_LLM_HASH_CONFIRM: "${APP_LLM_HASH_CONFIRM:-}"
 

@@ -62,8 +62,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if modelName == "hash" {
-		log.Warn("HASH CLASSIFIER ACTIVE: jokes are NOT graded by the LLM; scores are a deterministic hash. Local pilots only, never production.",
+	if modelName == "hash" || modelName == "traits" {
+		log.Warn("LOCAL PILOT CLASSIFIER ACTIVE: jokes are NOT graded by the LLM; scores come from a hash or the trait corpus. Local pilots only, never production.",
 			"APP_LLM_MODE", cfg.LLM.Mode,
 			"fix", "unset APP_LLM_MODE and APP_LLM_HASH_CONFIRM to grade with the LLM",
 		)
@@ -95,22 +95,30 @@ func dispatcherConfig(cfg *config.Config) worker.DispatcherConfig {
 	}
 }
 
-// buildClassifier picks the classifier from the LLM settings. Hash mode needs
-// both APP_LLM_MODE=hash and APP_LLM_HASH_CONFIRM=local-pilot-only, and an
-// unknown mode is an error, so a typo or a single stray variable can never
-// silently swap LLM grading for the hash classifier.
+// buildClassifier picks the classifier from the LLM settings. Hash and traits
+// modes each need APP_LLM_MODE (hash or traits) and
+// APP_LLM_HASH_CONFIRM=local-pilot-only, and an unknown mode is an error, so a
+// typo or a single stray variable can never silently swap LLM grading for a
+// local-pilot classifier.
 func buildClassifier(cfg config.LLMConfig) (c ports.Classifier, model string, err error) {
 	switch cfg.Mode {
 	case "":
-	case "hash":
+	case "hash", "traits":
 		if cfg.HashConfirm != config.HashConfirmValue {
 			return nil, "", fmt.Errorf(
-				"APP_LLM_MODE=hash grades jokes with a hash, not the LLM: set APP_LLM_HASH_CONFIRM=%s to confirm this is a local pilot, or unset APP_LLM_MODE",
-				config.HashConfirmValue)
+				"APP_LLM_MODE=%s does not grade jokes with the LLM: set APP_LLM_HASH_CONFIRM=%s to confirm this is a local pilot, or unset APP_LLM_MODE",
+				cfg.Mode, config.HashConfirmValue)
 		}
-		return llm.HashClassifier{}, "hash", nil
+		if cfg.Mode == "hash" {
+			return llm.HashClassifier{}, "hash", nil
+		}
+		traits, err := llm.NewTraitClassifier()
+		if err != nil {
+			return nil, "", err
+		}
+		return traits, "traits", nil
 	default:
-		return nil, "", fmt.Errorf("APP_LLM_MODE=%q is not supported: leave it unset, or use \"hash\" for local pilots", cfg.Mode)
+		return nil, "", fmt.Errorf("APP_LLM_MODE=%q is not supported: leave it unset, or use \"hash\" or \"traits\" for local pilots", cfg.Mode)
 	}
 	if cfg.Enabled() {
 		return llm.NewAzureClassifier(cfg), cfg.Deployment, nil

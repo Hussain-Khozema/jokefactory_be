@@ -45,8 +45,29 @@ func TestBuildClassifierHashNeedsConfirmation(t *testing.T) {
 	}
 }
 
+// Traits mode takes the same confirmation as hash mode, and reads the corpus.
+func TestBuildClassifierTraitsNeedsConfirmation(t *testing.T) {
+	for _, confirm := range []string{"", "yes", "LOCAL-PILOT-ONLY"} {
+		_, _, err := buildClassifier(config.LLMConfig{Mode: "traits", HashConfirm: confirm})
+		if err == nil || !strings.Contains(err.Error(), "APP_LLM_HASH_CONFIRM") {
+			t.Fatalf("confirm %q: want an error naming APP_LLM_HASH_CONFIRM, got %v", confirm, err)
+		}
+	}
+
+	c, model, err := buildClassifier(config.LLMConfig{
+		Mode: "traits", HashConfirm: "local-pilot-only", BaseURL: "https://x", APIKey: "k",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc, ok := c.(*llm.TraitClassifier)
+	if !ok || model != "traits" || tc.Len() != 1000 {
+		t.Fatalf("confirmed traits: got %T %q, want the trait classifier with the 1000-joke corpus", c, model)
+	}
+}
+
 func TestBuildClassifierRejectsUnknownMode(t *testing.T) {
-	for _, mode := range []string{"HASH", "azure", "stub", " hash"} {
+	for _, mode := range []string{"HASH", "azure", "stub", " hash", "TRAITS", "trait"} {
 		_, _, err := buildClassifier(config.LLMConfig{Mode: mode, HashConfirm: "local-pilot-only"})
 		if err == nil || !strings.Contains(err.Error(), "APP_LLM_MODE") {
 			t.Fatalf("mode %q: want an error naming APP_LLM_MODE, got %v", mode, err)

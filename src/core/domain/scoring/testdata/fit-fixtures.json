@@ -1,0 +1,51 @@
+{
+  "about": "Shared scoring fixtures: the backend (src/core/domain/scoring/testdata/fit-fixtures.json, fit_fixtures_test.go) and the frontend (config/fit-fixtures.json, config/fitFixtures.test.ts) keep byte-identical copies and both assert every case. dim_fit lists all 12 dimensions; a missing classification key is an empty category.",
+  "ideals": {
+    "pilot": {"LENGTH": "Medium", "TOPIC": "Work", "HUMOR_STYLE": "Observational", "COMPLEXITY": "Moderate", "EDGINESS": "Clean", "STRUCTURE": "Setup–punchline", "WORDPLAY": "Light", "FRESHNESS": "Timeless", "SETUP_PAYOFF": "Balanced", "CLARITY": "Crystal clear", "ENERGY": "Conversational"},
+    "far": {"LENGTH": "Short", "TOPIC": "Food", "HUMOR_STYLE": "Pun", "COMPLEXITY": "Very simple", "EDGINESS": "Slightly edgy", "STRUCTURE": "One-liner", "WORDPLAY": "Heavy", "FRESHNESS": "Time-sensitive", "SETUP_PAYOFF": "Immediate", "CLARITY": "Reinterpretation", "ENERGY": "Deadpan"}
+  },
+  "cases": [
+    {
+      "name": "on the ideal everywhere, perfect title",
+      "ideal": "pilot",
+      "classification": {"LENGTH": "Medium", "TOPIC": "Work", "HUMOR_STYLE": "Observational", "COMPLEXITY": "Moderate", "EDGINESS": "Clean", "STRUCTURE": "Setup–punchline", "WORDPLAY": "Light", "FRESHNESS": "Timeless", "SETUP_PAYOFF": "Balanced", "CLARITY": "Crystal clear", "ENERGY": "Conversational", "TITLE_FIT": "Perfect"},
+      "dim_fit": {"LENGTH": 1, "TOPIC": 1, "HUMOR_STYLE": 1, "COMPLEXITY": 1, "EDGINESS": 1, "STRUCTURE": 1, "WORDPLAY": 1, "FRESHNESS": 1, "SETUP_PAYOFF": 1, "CLARITY": 1, "ENERGY": 1, "TITLE_FIT": 1},
+      "true_fit": 12
+    },
+    {
+      "name": "on the ideal everywhere, the trait classifier's Strong title",
+      "ideal": "pilot",
+      "classification": {"LENGTH": "Medium", "TOPIC": "Work", "HUMOR_STYLE": "Observational", "COMPLEXITY": "Moderate", "EDGINESS": "Clean", "STRUCTURE": "Setup–punchline", "WORDPLAY": "Light", "FRESHNESS": "Timeless", "SETUP_PAYOFF": "Balanced", "CLARITY": "Crystal clear", "ENERGY": "Conversational", "TITLE_FIT": "Strong"},
+      "dim_fit": {"LENGTH": 1, "TOPIC": 1, "HUMOR_STYLE": 1, "COMPLEXITY": 1, "EDGINESS": 1, "STRUCTURE": 1, "WORDPLAY": 1, "FRESHNESS": 1, "SETUP_PAYOFF": 1, "CLARITY": 1, "ENERGY": 1, "TITLE_FIT": 0.75},
+      "true_fit": 11.75
+    },
+    {
+      "name": "every ordered scale one step off, moderate title",
+      "ideal": "pilot",
+      "classification": {"LENGTH": "Short", "TOPIC": "Work", "HUMOR_STYLE": "Observational", "COMPLEXITY": "Thoughtful", "EDGINESS": "Clean", "STRUCTURE": "Setup–punchline", "WORDPLAY": "Moderate", "FRESHNESS": "Slightly current", "SETUP_PAYOFF": "Quick", "CLARITY": "Mostly clear", "ENERGY": "Animated", "TITLE_FIT": "Moderate"},
+      "dim_fit": {"LENGTH": 0.5, "TOPIC": 1, "HUMOR_STYLE": 1, "COMPLEXITY": 0.5, "EDGINESS": 1, "STRUCTURE": 1, "WORDPLAY": 0.5, "FRESHNESS": 0.5, "SETUP_PAYOFF": 0.5, "CLARITY": 0.5, "ENERGY": 0.5, "TITLE_FIT": 0.5},
+      "true_fit": 8
+    },
+    {
+      "name": "the pilot's ideal judged against a far ideal, weak title",
+      "ideal": "far",
+      "classification": {"LENGTH": "Medium", "TOPIC": "Work", "HUMOR_STYLE": "Observational", "COMPLEXITY": "Moderate", "EDGINESS": "Clean", "STRUCTURE": "Setup–punchline", "WORDPLAY": "Light", "FRESHNESS": "Timeless", "SETUP_PAYOFF": "Balanced", "CLARITY": "Crystal clear", "ENERGY": "Conversational", "TITLE_FIT": "Weak"},
+      "dim_fit": {"LENGTH": 0.5, "TOPIC": 0, "HUMOR_STYLE": 0, "COMPLEXITY": 0, "EDGINESS": 0, "STRUCTURE": 0, "WORDPLAY": 0, "FRESHNESS": 0, "SETUP_PAYOFF": 0, "CLARITY": 0, "ENERGY": 0, "TITLE_FIT": 0.25},
+      "true_fit": 0.75
+    },
+    {
+      "name": "catch-all categories score 0 against a real ideal",
+      "ideal": "pilot",
+      "classification": {"LENGTH": "Medium", "TOPIC": "Work", "HUMOR_STYLE": "None of the above", "COMPLEXITY": "Moderate", "EDGINESS": "Clean", "STRUCTURE": "None of the above", "WORDPLAY": "Light", "FRESHNESS": "Timeless", "SETUP_PAYOFF": "Balanced", "CLARITY": "Crystal clear", "ENERGY": "None of the above", "TITLE_FIT": "Mismatch"},
+      "dim_fit": {"LENGTH": 1, "TOPIC": 1, "HUMOR_STYLE": 0, "COMPLEXITY": 1, "EDGINESS": 1, "STRUCTURE": 0, "WORDPLAY": 1, "FRESHNESS": 1, "SETUP_PAYOFF": 1, "CLARITY": 1, "ENERGY": 0, "TITLE_FIT": 0},
+      "true_fit": 8
+    },
+    {
+      "name": "unknown and missing categories score 0",
+      "ideal": "pilot",
+      "classification": {"LENGTH": "Medium", "TOPIC": "Weather", "HUMOR_STYLE": "Observational", "EDGINESS": "Clean", "STRUCTURE": "Setup–punchline", "WORDPLAY": "Light", "FRESHNESS": "Timeless", "SETUP_PAYOFF": "Balanced", "CLARITY": "Crystal clear", "ENERGY": "Conversational", "TITLE_FIT": "Great"},
+      "dim_fit": {"LENGTH": 1, "TOPIC": 0, "HUMOR_STYLE": 1, "COMPLEXITY": 0, "EDGINESS": 1, "STRUCTURE": 1, "WORDPLAY": 1, "FRESHNESS": 1, "SETUP_PAYOFF": 1, "CLARITY": 1, "ENERGY": 1, "TITLE_FIT": 0},
+      "true_fit": 9
+    }
+  ]
+}
