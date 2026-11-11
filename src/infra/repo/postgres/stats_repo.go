@@ -151,9 +151,10 @@ func (r *Repositories) ListTeamFeedbackJokes(ctx context.Context, roundID, teamI
 			LIMIT $3
 		)
 		SELECT l.joke_id, COALESCE(l.joke_title, ''), l.was_bought, l.published_at,
-		       d.dimension, d.dim_fit
+		       d.dimension, d.dim_fit, v.category
 		FROM latest l
 		LEFT JOIN joke_dim_fit d ON d.joke_id = l.joke_id
+		LEFT JOIN joke_dimension_values v ON v.joke_id = d.joke_id AND v.dimension = d.dimension
 		ORDER BY l.published_at DESC NULLS LAST, l.joke_id DESC`,
 		roundID, teamID, limit)
 	if err != nil {
@@ -171,23 +172,28 @@ func (r *Repositories) ListTeamFeedbackJokes(ctx context.Context, roundID, teamI
 			publishedAt *time.Time
 			dimension   *string
 			dimFit      *float64
+			category    *string
 		)
-		if err := rows.Scan(&jokeID, &title, &wasBought, &publishedAt, &dimension, &dimFit); err != nil {
+		if err := rows.Scan(&jokeID, &title, &wasBought, &publishedAt, &dimension, &dimFit, &category); err != nil {
 			return nil, err
 		}
 		row, ok := byID[jokeID]
 		if !ok {
 			row = &ports.FeedbackJokeRow{
-				JokeID:    jokeID,
-				JokeTitle: title,
-				WasBought: wasBought,
-				DimFits:   make(map[domain.Dimension]float64),
+				JokeID:     jokeID,
+				JokeTitle:  title,
+				WasBought:  wasBought,
+				DimFits:    make(map[domain.Dimension]float64),
+				Categories: make(map[domain.Dimension]string),
 			}
 			byID[jokeID] = row
 			order = append(order, jokeID)
 		}
 		if dimension != nil && dimFit != nil {
 			row.DimFits[domain.Dimension(*dimension)] = *dimFit
+		}
+		if dimension != nil && category != nil {
+			row.Categories[domain.Dimension(*dimension)] = *category
 		}
 	}
 	if err := rows.Err(); err != nil {

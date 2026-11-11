@@ -1249,11 +1249,16 @@ func (st *Store) ListTeamFeedbackJokes(_ context.Context, roundID, teamID int64,
 				fits[k] = v
 			}
 		}
+		cats := make(map[domain.Dimension]string)
+		for k, v := range st.DimValues[c.joke.ID] {
+			cats[k] = v
+		}
 		out = append(out, ports.FeedbackJokeRow{
-			JokeID:    c.joke.ID,
-			JokeTitle: title,
-			WasBought: bought[c.joke.ID],
-			DimFits:   fits,
+			JokeID:     c.joke.ID,
+			JokeTitle:  title,
+			WasBought:  bought[c.joke.ID],
+			DimFits:    fits,
+			Categories: cats,
 		})
 	}
 	return out, nil

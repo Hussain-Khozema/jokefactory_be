@@ -265,6 +265,8 @@ type FeedbackJokeRow struct {
 	JokeTitle string
 	WasBought bool
 	DimFits   map[domain.Dimension]float64
+	// Categories is the joke's classified category per dimension (for hints).
+	Categories map[domain.Dimension]string
 }
 
 type StatsRepository interface {

@@ -49,6 +49,7 @@ func TestFeedbackService(t *testing.T) {
 	jm := findJM(t, session, users)
 	mkt := findMarketingOnTeam(t, session, users, *jm.TeamID)
 
+	cats := map[domain.Dimension]string{}
 	publishAndFit := func(title string, dimFits map[domain.Dimension]float64, bought bool) int64 {
 		t.Helper()
 		batch, err := batches.Submit(ctx, jm.ID, 1, *jm.TeamID, []string{"a short joke text"}, "")
@@ -66,7 +67,7 @@ func TestFeedbackService(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := store.PersistJokeFits(ctx, []ports.JokeFitMaterialization{{
-			JokeID: jokeID, RoundID: 1, Categories: map[domain.Dimension]string{},
+			JokeID: jokeID, RoundID: 1, Categories: cats,
 			DimFits: dimFits, TrueFit: 5,
 		}}); err != nil {
 			t.Fatal(err)
@@ -100,6 +101,14 @@ func TestFeedbackService(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 	newerID := publishAndFit("Corporate Comedy", mixed, true)
 	time.Sleep(2 * time.Millisecond)
+	// The newest joke misses everything and is classified off the ideal on every
+	// ordered scale, so each ordinal dimension it shows carries a direction.
+	cats = map[domain.Dimension]string{
+		domain.DimLength: "Long", domain.DimTopic: "Food", domain.DimHumorStyle: "Pun",
+		domain.DimComplexity: "Expert", domain.DimEdginess: "Slightly edgy", domain.DimStructure: "One-liner",
+		domain.DimWordplay: "None", domain.DimFreshness: "Current", domain.DimSetupPayoff: "Immediate",
+		domain.DimClarity: "Ambiguous", domain.DimEnergy: "Deadpan", domain.DimTitleFit: "Weak",
+	}
 	newestID := publishAndFit("Newest", allFail, false)
 
 	items, err := feedback.Get(ctx, 1, *jm.TeamID, mkt.ID)
@@ -115,11 +124,42 @@ func TestFeedbackService(t *testing.T) {
 	if !items[1].WasBought {
 		t.Fatal("Corporate Comedy should be was_bought=true")
 	}
-	if !reflect.DeepEqual(items[1].ImproveDimensions, []string{"LENGTH", "TOPIC", "HUMOR_STYLE"}) {
-		t.Fatalf("mixed improve = %v", items[1].ImproveDimensions)
+	// Each joke walks the dimensions from its own starting point (jokeID mod 12).
+	wantGood, wantImprove := usecase.SelectFeedbackDimensionsFrom(mixed, 0.75, usecase.FeedbackStart(newerID))
+	if !reflect.DeepEqual(items[1].ImproveDimensions, wantImprove) || !reflect.DeepEqual(items[1].GoodDimensions, wantGood) {
+		t.Fatalf("mixed good=%v improve=%v, want good=%v improve=%v",
+			items[1].GoodDimensions, items[1].ImproveDimensions, wantGood, wantImprove)
 	}
-	if !reflect.DeepEqual(items[1].GoodDimensions, []string{"EDGINESS", "STRUCTURE"}) {
-		t.Fatalf("mixed good = %v", items[1].GoodDimensions)
+	failed := map[string]bool{"LENGTH": true, "TOPIC": true, "HUMOR_STYLE": true, "COMPLEXITY": true}
+	if len(items[1].ImproveDimensions) != 3 || len(items[1].GoodDimensions) != 2 {
+		t.Fatalf("mixed wants 3 improve + 2 good, got %v / %v", items[1].ImproveDimensions, items[1].GoodDimensions)
+	}
+	for _, d := range items[1].ImproveDimensions {
+		if !failed[d] {
+			t.Fatalf("improve %s is not a failed dimension", d)
+		}
+	}
+	for _, d := range items[1].GoodDimensions {
+		if failed[d] {
+			t.Fatalf("good %s is a failed dimension", d)
+		}
+	}
+	// No categories were stored for these jokes, so no direction hints.
+	if len(items[1].ImproveHints) != 0 {
+		t.Fatalf("hints without categories: %v", items[1].ImproveHints)
+	}
+	wantHint := map[string]string{
+		"LENGTH": usecase.HintLower, "COMPLEXITY": usecase.HintLower, "WORDPLAY": usecase.HintHigher,
+		"FRESHNESS": usecase.HintLower, "SETUP_PAYOFF": usecase.HintHigher, "CLARITY": usecase.HintLower,
+		"ENERGY": usecase.HintHigher,
+	}
+	if len(items[0].ImproveDimensions) == 0 {
+		t.Fatal("newest joke has no improve dimensions")
+	}
+	for _, d := range items[0].ImproveDimensions {
+		if got := items[0].ImproveHints[d]; got != wantHint[d] {
+			t.Fatalf("hint for %s = %q, want %q (hints %v)", d, got, wantHint[d], items[0].ImproveHints)
+		}
 	}
 
 	if _, err := feedback.Get(ctx, 1, *jm.TeamID, jm.ID); err != nil {

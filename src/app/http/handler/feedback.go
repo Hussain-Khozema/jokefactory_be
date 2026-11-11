@@ -50,6 +50,7 @@ func (h *FeedbackHandler) Get(c *gin.Context) {
 			WasBought:         item.WasBought,
 			GoodDimensions:    item.GoodDimensions,
 			ImproveDimensions: item.ImproveDimensions,
+			ImproveHints:      item.ImproveHints,
 		})
 	}
 	response.OK(c, gin.H{"jokes": jokes})

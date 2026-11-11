@@ -59,6 +59,9 @@ type FeedbackJoke struct {
 	WasBought         bool     `json:"was_bought"`
 	GoodDimensions    []string `json:"good_dimensions"`
 	ImproveDimensions []string `json:"improve_dimensions"`
+	// ImproveHints maps a missed ordinal dimension to LOWER or HIGHER: which
+	// way to move along its scale, never how far.
+	ImproveHints map[string]string `json:"improve_hints"`
 }
 
 // ConfigRequest updates round configuration (instructor).
