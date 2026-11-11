@@ -208,6 +208,16 @@ Rollback: do NOT run `migrate-down`; the old image ignores the new columns.
 
 Rollback: do NOT run `migrate-down`; the old image ignores the new column (and then uses the stored `customer_count`).
 
+### Deploying the two costs (listing and hosting)
+
+No migration: the two costs are new defaults (listing `cost_of_publishing` $0.10 per released joke, hosting $0.05 per joke-minute; shipping, storage and discard 0) plus a lock on listing and discard once a Lean round has started. The order matters the other way round from 0004–0006:
+
+1. **Deploy the frontend first.** An old frontend on the new backend names fees that are now $0 ("Shipping: $0 per batch of 5", $0 Shipping and Storage tiles, a tour step saying a batch "costs $0 to ship"). The new frontend hides any fee whose amount is 0, so it reads correctly on the old backend too.
+2. Then `make deploy` the backend.
+3. Press **Reset Game** before the next class. Rounds written before this deploy, live ones included, keep the old five fees until they are reset. After the reset, open Setup and confirm Rounds 1 and 2 show only Listing and Hosting.
+
+Rollback: redeploy the previous image (and frontend, if needed). Nothing in the database changes shape, so there is nothing to migrate down; rounds reset under the new defaults keep the two costs until the next Reset Game.
+
 ## Make targets
 
 ```bash
