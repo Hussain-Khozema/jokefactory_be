@@ -92,7 +92,7 @@ func TestLeanFeesRoutes(t *testing.T) {
 			t.Errorf("public round 2 %s = %v; want %v", k, r2[k], v)
 		}
 	}
-	if r1 := publicRound(1); r1["shipping_fee_standard"] != 2.0 || r1["storage_fee_per_joke_minute"] != 0.05 ||
+	if r1 := publicRound(1); r1["shipping_fee_standard"] != 0.0 || r1["storage_fee_per_joke_minute"] != 0.0 ||
 		r1["hosting_fee_per_joke_minute"] != 0.05 || r1["batch_size"] != 5.0 {
 		t.Errorf("public round 1 = %v; want the default fees and batch size 5", r1)
 	}
@@ -114,8 +114,8 @@ func TestLeanFeesRoutes(t *testing.T) {
 	if code, body := feesRequest(t, h, http.MethodPost, "/v1/admin/reset", instructor, nil); code != http.StatusOK {
 		t.Fatalf("reset: %d %v", code, body)
 	}
-	if r2 := publicRound(2); r2["batch_size"] != 10.0 || r2["shipping_fee_small"] != 1.0 ||
-		r2["storage_fee_per_joke_minute"] != 0.05 || r2["status"] != "CONFIGURED" {
+	if r2 := publicRound(2); r2["batch_size"] != 10.0 || r2["shipping_fee_small"] != 0.0 ||
+		r2["storage_fee_per_joke_minute"] != 0.0 || r2["status"] != "CONFIGURED" {
 		t.Errorf("round 2 after reset = %v; want batch_size 10 and the default fees", r2)
 	}
 }

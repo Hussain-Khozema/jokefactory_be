@@ -32,7 +32,7 @@ func feesFixture(t *testing.T) (*testutil.Store, *domain.Round) {
 	ctx := context.Background()
 	st := testutil.NewStore()
 	st.Teams = []domain.Team{{ID: 1, Name: "Team 1"}, {ID: 2, Name: "Team 2"}}
-	cfg := domain.DefaultRoundConfigFor(2)
+	cfg := testutil.FiveFees(domain.DefaultRoundConfigFor(2))
 	cfg.StorageFeePerJokeMinute = 0.10
 	if _, err := st.InsertRoundConfig(ctx, 2, &cfg); err != nil {
 		t.Fatal(err)

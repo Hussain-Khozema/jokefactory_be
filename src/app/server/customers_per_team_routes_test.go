@@ -48,7 +48,7 @@ func TestCustomersPerTeamRoutes(t *testing.T) {
 		t.Fatalf("config: %d %v", code, body)
 	}
 	if r := roundOf(body); r["customers_per_team"] != 12.0 || r["buy_threshold"] != 8.0 || r["preference_base"] != 5.0 ||
-		r["storage_fee_per_joke_minute"] != 0.05 {
+		r["storage_fee_per_joke_minute"] != 0.0 {
 		t.Errorf("instructor round 2 = %v; want customers_per_team 12 and the tuned defaults", r)
 	}
 

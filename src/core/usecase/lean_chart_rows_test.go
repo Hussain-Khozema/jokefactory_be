@@ -82,10 +82,9 @@ func TestMemStoreLeanChartRowsMirrorTheLeanStats(t *testing.T) {
 func TestMemStoreLeanChartRowsUnsplitBatchAndEmptyTeam(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewStore()
-	cfg := domain.DefaultRoundConfig()
+	cfg := testutil.FiveFees(domain.DefaultRoundConfig())
 	cfg.MarketMode = domain.MarketLean
 	cfg.BatchSize = 10
-	cfg.StorageFeePerJokeMinute = 0.05
 	if _, err := st.InsertRoundConfig(ctx, 1, &cfg); err != nil {
 		t.Fatal(err)
 	}

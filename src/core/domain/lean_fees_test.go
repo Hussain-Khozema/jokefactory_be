@@ -2,18 +2,22 @@ package domain
 
 import "testing"
 
-// One Lean rule set for both rounds (spec §4 Defaults).
+// One Lean rule set for both rounds, with two costs: listing and hosting
+// (docs/superpowers/specs/2026-11-10-two-costs-feedback-bots-design.md §2).
 func TestDefaultRoundConfigIsTheLeanRuleSet(t *testing.T) {
 	cfg := DefaultRoundConfig()
 	if cfg.MarketMode != MarketLean {
 		t.Fatalf("default mode %q; want LEAN", cfg.MarketMode)
 	}
-	if cfg.ShippingFeeSmall != 1 || cfg.ShippingFeeStandard != 2 || cfg.ShippingFeeLarge != 3 {
-		t.Fatalf("shipping fees %v / %v / %v; want 1 / 2 / 3",
+	if cfg.ShippingFeeSmall != 0 || cfg.ShippingFeeStandard != 0 || cfg.ShippingFeeLarge != 0 {
+		t.Fatalf("shipping fees %v / %v / %v; want 0 / 0 / 0",
 			cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge)
 	}
-	if cfg.StorageFeePerJokeMinute != 0.05 || cfg.HostingFeePerJokeMinute != 0.05 {
-		t.Fatalf("storage %v, hosting %v; want 0.05, 0.05", cfg.StorageFeePerJokeMinute, cfg.HostingFeePerJokeMinute)
+	if cfg.StorageFeePerJokeMinute != 0 || cfg.CostOfDiscard != 0 {
+		t.Fatalf("storage %v, discard %v; want 0, 0", cfg.StorageFeePerJokeMinute, cfg.CostOfDiscard)
+	}
+	if cfg.CostOfPublishing != 0.10 || cfg.HostingFeePerJokeMinute != 0.05 {
+		t.Fatalf("listing %v, hosting %v; want 0.10, 0.05", cfg.CostOfPublishing, cfg.HostingFeePerJokeMinute)
 	}
 	if cfg.WIPLimit != 0 || cfg.PreferenceBase != 5 || cfg.CustomerCount != 150 || cfg.ArrivalWindowSeconds != 900 {
 		t.Fatalf("wip %d, preference base %v, customers %d, window %d; want 0, 5, 150, 900",

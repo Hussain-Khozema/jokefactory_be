@@ -34,9 +34,9 @@ func TestLoginAndResetGiveRound1FiveAndRound2Ten(t *testing.T) {
 				t.Fatalf("%s: round %d: %v", when, want.id, err)
 			}
 			if rd.BatchSize != want.batchSize || rd.Status != domain.RoundConfigured || rd.MarketMode != domain.MarketLean ||
-				rd.ShippingFeeStandard != 2 || rd.StorageFeePerJokeMinute != 0.05 || rd.HostingFeePerJokeMinute != 0.05 ||
-				rd.StartedAt != nil {
-				t.Fatalf("%s: round %d = %+v; want CONFIGURED LEAN, batch size %d, default fees",
+				rd.ShippingFeeStandard != 0 || rd.StorageFeePerJokeMinute != 0 || rd.CostOfDiscard != 0 ||
+				rd.CostOfPublishing != 0.1 || rd.HostingFeePerJokeMinute != 0.05 || rd.StartedAt != nil {
+				t.Fatalf("%s: round %d = %+v; want CONFIGURED LEAN, batch size %d, the two costs",
 					when, want.id, rd, want.batchSize)
 			}
 		}
@@ -132,11 +132,12 @@ func TestMergeConfigLeanFees(t *testing.T) {
 	}
 }
 
-// startedDefaultRound configures round 1 with the defaults and starts it.
+// startedDefaultRound configures round 1 with the defaults and the five fees
+// (so every fee has a value to change) and starts it.
 func startedDefaultRound(t *testing.T, svc *usecase.InstructorService) domain.RoundConfig {
 	t.Helper()
 	ctx := context.Background()
-	cfg := domain.DefaultRoundConfig()
+	cfg := testutil.FiveFees(domain.DefaultRoundConfig())
 	if _, err := svc.Config(ctx, 1, &cfg, testutil.ValidIdealProfile()); err != nil {
 		t.Fatal(err)
 	}

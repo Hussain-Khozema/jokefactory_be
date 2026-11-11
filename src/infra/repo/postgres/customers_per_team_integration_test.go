@@ -84,7 +84,7 @@ func TestResetGameGivesTheTunedDefaultsIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		if rd.CustomersPerTeam != 18 || rd.BuyThreshold != 8 || rd.PreferenceBase != 5 ||
-			rd.StorageFeePerJokeMinute != 0.05 || domain.ConfigFromRound(rd) != domain.DefaultRoundConfigFor(int(n)) {
+			rd.StorageFeePerJokeMinute != 0 || domain.ConfigFromRound(rd) != domain.DefaultRoundConfigFor(int(n)) {
 			t.Errorf("round %d after reset: %+v; want the tuned defaults", n, domain.ConfigFromRound(rd))
 		}
 	}

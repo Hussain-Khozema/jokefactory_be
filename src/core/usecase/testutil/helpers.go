@@ -6,6 +6,17 @@ import (
 	"jokefactory/src/core/domain/scoring"
 )
 
+// FiveFees is cfg with the five-fee amounts that preceded the two costs:
+// shipping $1 / $2 / $3 per batch of 1–4 / 5 / 6+ jokes, storage $0.05 per
+// joke-minute and discard $0.01 per joke. For tests whose arithmetic is about
+// those fees; the defaults now charge only listing and hosting.
+func FiveFees(cfg domain.RoundConfig) domain.RoundConfig {
+	cfg.ShippingFeeSmall, cfg.ShippingFeeStandard, cfg.ShippingFeeLarge = 1, 2, 3
+	cfg.StorageFeePerJokeMinute = 0.05
+	cfg.CostOfDiscard = 0.01
+	return cfg
+}
+
 func ValidIdealProfile() domain.IdealProfile {
 	return domain.IdealProfile{
 		domain.DimLength:      scoring.LengthMedium,
