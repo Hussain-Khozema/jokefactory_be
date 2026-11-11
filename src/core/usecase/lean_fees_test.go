@@ -157,6 +157,8 @@ func TestConfigLocksLeanFeesOnceStarted(t *testing.T) {
 		"shipping large":    func(c *domain.RoundConfig) { c.ShippingFeeLarge = 4 },
 		"storage":           func(c *domain.RoundConfig) { c.StorageFeePerJokeMinute = 0.2 },
 		"hosting":           func(c *domain.RoundConfig) { c.HostingFeePerJokeMinute = 0.1 },
+		"listing":           func(c *domain.RoundConfig) { c.CostOfPublishing = 0.25 },
+		"discard":           func(c *domain.RoundConfig) { c.CostOfDiscard = 0.05 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, svc := newLeanConfigInstructor()
@@ -185,6 +187,8 @@ func TestConfigAllowsResendingSameLeanFeesOnceStarted(t *testing.T) {
 	// Values that round to the stored scale are the same values.
 	cfg.ShippingFeeStandard = 2.000001
 	cfg.StorageFeePerJokeMinute = 0.050000001
+	cfg.CostOfPublishing = 0.1000001
+	cfg.CostOfDiscard = 0.010000001
 	cfg.MarketPrice = 2
 	if _, err := svc.Config(context.Background(), 1, &cfg, nil); err != nil {
 		t.Fatalf("resending the same fees on an ACTIVE round: %v", err)
@@ -206,11 +210,14 @@ func TestConfigAllowsLeanFeeChangesBeforeStart(t *testing.T) {
 	}
 	cfg.ShippingFeeLarge = 5
 	cfg.HostingFeePerJokeMinute = 0.2
+	cfg.CostOfPublishing = 0.25
+	cfg.CostOfDiscard = 0.05
 	res, err := svc.Config(context.Background(), 1, &cfg, nil)
 	if err != nil {
 		t.Fatalf("fee change on a CONFIGURED round: %v", err)
 	}
-	if res.Round.ShippingFeeLarge != 5 || res.Round.HostingFeePerJokeMinute != 0.2 {
+	if res.Round.ShippingFeeLarge != 5 || res.Round.HostingFeePerJokeMinute != 0.2 ||
+		res.Round.CostOfPublishing != 0.25 || res.Round.CostOfDiscard != 0.05 {
 		t.Fatalf("fee change not written: %+v", res.Round)
 	}
 }

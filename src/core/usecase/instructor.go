@@ -82,14 +82,15 @@ func (s *InstructorService) Config(ctx context.Context, roundID int64, cfg *doma
 }
 
 // checkStartedRoundLock refuses, once a round has left CONFIGURED, to change
-// market_mode or (for a LEAN round) any lean setting, the five fees and
+// market_mode or (for a LEAN round) any lean setting: the five lean fees,
+// listing (cost_of_publishing), discard (cost_of_discard) and
 // customers_per_team included.
 // Lean customers get arrival times only in StartRound, so a mode switch
 // mid-round would strand them (to LEAN) or make them all shop at once (to
 // CLASSIC); and the fees are read at stats time, so changing them later would
 // rewrite the round's past profits. Re-sending the stored values, and every
-// other field (price, costs, budget, ...), are unaffected. Lean settings on a
-// CLASSIC round are ignored by the market, so they are not locked there.
+// other field (price, budget, ...), are unaffected. Lean settings and the two
+// per-joke costs on a CLASSIC round are not locked.
 func (s *InstructorService) checkStartedRoundLock(ctx context.Context, roundID int64, cfg *domain.RoundConfig) error {
 	existing, err := s.repo.GetRoundByID(ctx, roundID)
 	if err != nil {
@@ -116,10 +117,11 @@ func errStartedRoundLocked() error {
 }
 
 // leanSettingsChanged compares at the scale Postgres stores each column
-// (setup cost, shipping fees and preference base NUMERIC(_,2); carrying cost,
-// storage and hosting fees NUMERIC(_,4)), so a value that round-trips through
-// the database counts as unchanged. The fees are read at stats time, so
-// changing one after the start would rewrite the round's past profits.
+// (setup cost, shipping fees, listing, discard and preference base
+// NUMERIC(_,2); carrying cost, storage and hosting fees NUMERIC(_,4)), so a
+// value that round-trips through the database counts as unchanged. The fees
+// are read at stats time, so changing one after the start would rewrite the
+// round's past profits.
 func leanSettingsChanged(r *domain.Round, cfg *domain.RoundConfig) bool {
 	return r.ArrivalWindowSeconds != cfg.ArrivalWindowSeconds ||
 		r.WIPLimit != cfg.WIPLimit ||
@@ -131,6 +133,8 @@ func leanSettingsChanged(r *domain.Round, cfg *domain.RoundConfig) bool {
 		!sameAtScale(r.ShippingFeeLarge, cfg.ShippingFeeLarge, 100) ||
 		!sameAtScale(r.StorageFeePerJokeMinute, cfg.StorageFeePerJokeMinute, 10000) ||
 		!sameAtScale(r.HostingFeePerJokeMinute, cfg.HostingFeePerJokeMinute, 10000) ||
+		!sameAtScale(r.CostOfPublishing, cfg.CostOfPublishing, 100) ||
+		!sameAtScale(r.CostOfDiscard, cfg.CostOfDiscard, 100) ||
 		r.CustomersPerTeam != cfg.CustomersPerTeam
 }
 
